@@ -99,6 +99,15 @@ class SessionManager:
         if session_id in self._sessions:
             del self._sessions[session_id]
     
+    def get_active_count(self) -> int:
+        """Đếm số sessions đang hoạt động"""
+        self._cleanup_expired()
+        return len(self._sessions)
+    
+    def clear_all(self):
+        """Xóa tất cả sessions"""
+        self._sessions.clear()
+    
     def _cleanup_expired(self):
         """Dọn dẹp các session hết hạn"""
         now = datetime.now()

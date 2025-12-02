@@ -1,4 +1,5 @@
 # config.py
+from typing import Optional
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -7,8 +8,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
 
     ES_HOST: str = "http://localhost:9200"
-    ES_USERNAME: str | None = None
-    ES_PASSWORD: str | None = None
+    ES_USERNAME: Optional[str] = None
+    ES_PASSWORD: Optional[str] = None
     ES_INDEX_NAME: str = "demo_documents"
 
     APP_PORT: int = 8000

@@ -92,7 +92,8 @@ def build_final_prompt(
     keyword_meaning: str,
     source_sentences: List[Dict],
     continue_mode: bool = False,
-    continue_count: int = 0
+    continue_count: int = 0,
+    custom_prompt: Optional[str] = None
 ) -> str:
     """
     Build prompt đầy đủ theo cấu trúc yêu cầu.
@@ -104,6 +105,7 @@ def build_final_prompt(
         source_sentences: Danh sách câu nguồn (đã group theo level)
         continue_mode: Đang ở chế độ "Tell me more"
         continue_count: Số lần đã bấm Continue
+        custom_prompt: Custom instructions từ user (optional)
     """
     # Build source sentences block, group theo level
     src_lines = []
@@ -137,6 +139,14 @@ Instructions:
 - Group your answer logically based on the source levels if applicable.
 """
 
+    # Add custom prompt from user if provided
+    custom_section = ""
+    if custom_prompt and custom_prompt.strip():
+        custom_section = f"""
+User custom instructions:
+{custom_prompt.strip()}
+"""
+
     final_prompt = f"""
 User original question:
 {user_query}
@@ -149,7 +159,7 @@ Keyword meaning:
 
 Source sentences (grouped by level):
 {src_block}
-{instructions}
+{instructions}{custom_section}
 """
     return final_prompt.strip()
 

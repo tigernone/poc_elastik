@@ -3,49 +3,92 @@
 Retriever Module - Multi-level retrieval cho Q&A
 Hỗ trợ:
 - Level-based retrieval (Level 0, 1, 2...)
+- Buffer 10-20% khi lấy câu
 - Exclude các câu đã dùng
 - Deduplicate
+- Batch processing để tránh tràn RAM
 """
-from typing import List, Dict, Any, Set, Optional
+from typing import List, Dict, Any, Set, Optional, Generator
 from vector.elastic_client import es
 from config import settings
-from services.embedder import get_embedding
+from services.embedder import get_embedding, get_embeddings_batch
 
 INDEX = settings.ES_INDEX_NAME
 
+# Constants
+DEFAULT_SENTENCES_PER_LEVEL = 5
+MAX_BATCH_SIZE = 50  # Batch size cho embedding để tránh tràn RAM
 
-def index_sentences(sentences: List[str], file_id: str = None) -> int:
+
+def index_sentences_batch(
+    sentences: List[str], 
+    file_id: str = None,
+    sentences_per_level: int = DEFAULT_SENTENCES_PER_LEVEL,
+    batch_size: int = MAX_BATCH_SIZE
+) -> int:
     """
-    Index danh sách câu vào Elasticsearch, auto gán level.
-    Mỗi 5 câu = 1 level (có thể customize).
+    Index danh sách câu vào Elasticsearch với batch processing.
+    Tránh tràn RAM bằng cách xử lý từng batch.
+    
+    Args:
+        sentences: Danh sách câu
+        file_id: ID của file
+        sentences_per_level: Số câu mỗi level
+        batch_size: Kích thước batch để xử lý
     
     Returns: max_level được tạo
     """
-    actions = []
     max_level = 0
+    total_sentences = len(sentences)
     
-    for i, sent in enumerate(sentences):
-        level = i // 5  # Mỗi 5 câu = 1 level
-        max_level = max(max_level, level)
-        emb = get_embedding(sent)
-
-        doc = {
-            "text": sent,
-            "level": level,
-            "embedding": emb,
-            "sentence_index": i,  # Thứ tự câu trong file
-        }
+    # Xử lý từng batch
+    for batch_start in range(0, total_sentences, batch_size):
+        batch_end = min(batch_start + batch_size, total_sentences)
+        batch_sentences = sentences[batch_start:batch_end]
         
-        if file_id:
-            doc["file_id"] = file_id
-
-        actions.append({"index": {"_index": INDEX}})
-        actions.append(doc)
-
-    if actions:
-        es.bulk(body=actions, refresh=True)
+        # Lấy embeddings cho cả batch (tối ưu hơn gọi từng câu)
+        embeddings = get_embeddings_batch(batch_sentences)
+        
+        actions = []
+        for i, (sent, emb) in enumerate(zip(batch_sentences, embeddings)):
+            global_index = batch_start + i
+            level = global_index // sentences_per_level
+            max_level = max(max_level, level)
+            
+            doc = {
+                "text": sent,
+                "level": level,
+                "embedding": emb,
+                "sentence_index": global_index,
+            }
+            
+            if file_id:
+                doc["file_id"] = file_id
+            
+            actions.append({"index": {"_index": INDEX}})
+            actions.append(doc)
+        
+        if actions:
+            es.bulk(body=actions, refresh=True)
     
     return max_level
+
+
+def index_sentences(
+    sentences: List[str], 
+    file_id: str = None,
+    sentences_per_level: int = DEFAULT_SENTENCES_PER_LEVEL
+) -> int:
+    """
+    Index danh sách câu vào Elasticsearch.
+    Wrapper cho index_sentences_batch với batch processing.
+    """
+    return index_sentences_batch(
+        sentences=sentences,
+        file_id=file_id,
+        sentences_per_level=sentences_per_level,
+        batch_size=MAX_BATCH_SIZE
+    )
 
 
 def get_max_level() -> int:
@@ -141,21 +184,27 @@ def get_sentences_by_level(
     start_level: int = 0,
     end_level: int = None,
     limit: int = 15,
-    exclude_texts: Set[str] = None
+    exclude_texts: Set[str] = None,
+    buffer_percentage: int = 15
 ) -> List[Dict[str, Any]]:
     """
-    Lấy câu nguồn từ các level cụ thể.
+    Lấy câu nguồn từ các level cụ thể với buffer.
     Dùng cho "Tell me more" - đi sâu vào level tiếp theo.
     
     Args:
         query: Câu hỏi
         start_level: Level bắt đầu
         end_level: Level kết thúc (None = tất cả từ start_level trở đi)
-        limit: Số câu tối đa
+        limit: Số câu tối đa cơ bản
         exclude_texts: Các câu đã dùng
+        buffer_percentage: Buffer % thêm (10-20%)
     
     Returns: Danh sách câu đã dedupe, group theo level
     """
+    # Áp dụng buffer (10-20%)
+    buffer_pct = max(10, min(20, buffer_percentage))  # Clamp 10-20%
+    buffered_limit = int(limit * (1 + buffer_pct / 100))
+    
     max_level = get_max_level()
     
     if end_level is None:
@@ -167,10 +216,10 @@ def get_sentences_by_level(
     if not target_levels:
         return []
     
-    # Search
+    # Search - lấy nhiều hơn để đủ sau khi dedupe
     hits = knn_search(
         query=query,
-        top_k=limit * 3,  # Lấy nhiều hơn để đủ sau khi dedupe
+        top_k=buffered_limit * 3,
         target_levels=target_levels,
         exclude_texts=exclude_texts
     )
@@ -183,7 +232,7 @@ def get_sentences_by_level(
         if t not in seen and (exclude_texts is None or t not in exclude_texts):
             seen.add(t)
             unique.append(h)
-        if len(unique) >= limit:
+        if len(unique) >= buffered_limit:  # Dùng buffered_limit
             break
     
     # Sort theo level, rồi score giảm dần
@@ -195,13 +244,15 @@ def get_sentences_by_level(
 def get_top_unique_sentences_grouped(
     query: str, 
     limit: int = 15,
-    exclude_texts: Set[str] = None
+    exclude_texts: Set[str] = None,
+    buffer_percentage: int = 15
 ) -> List[Dict[str, Any]]:
     """
     Lấy câu nguồn cho câu hỏi đầu tiên (Level 0 là chính).
+    Áp dụng buffer 10-20%.
     1. Search theo embedding
     2. Lấy unique text
-    3. Cắt còn `limit`
+    3. Áp dụng buffer
     4. Group theo level, sort theo level rồi score
     """
     return get_sentences_by_level(
@@ -209,7 +260,8 @@ def get_top_unique_sentences_grouped(
         start_level=0,
         end_level=None,  # Lấy từ tất cả level nhưng ưu tiên level thấp
         limit=limit,
-        exclude_texts=exclude_texts
+        exclude_texts=exclude_texts,
+        buffer_percentage=buffer_percentage
     )
 
 
