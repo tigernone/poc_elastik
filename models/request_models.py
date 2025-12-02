@@ -1,6 +1,6 @@
 # models/request_models.py
 """
-Request/Response Models với đầy đủ documentation cho Swagger
+Request/Response Models with full Swagger documentation
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -11,30 +11,30 @@ from typing import Optional, List
 # ============================================================
 
 class AskRequest(BaseModel):
-    """Request để hỏi câu hỏi"""
+    """Request to ask a question"""
     query: str = Field(
         ...,
-        description="Câu hỏi của user",
+        description="User's question",
         min_length=1,
         max_length=2000,
         example="What are the duties of a class teacher?"
     )
     custom_prompt: Optional[str] = Field(
         None,
-        description="Custom prompt/instructions từ user (sẽ được thêm vào cuối prompt)",
+        description="Custom prompt/instructions from user (will be appended to the prompt)",
         max_length=1000,
         example="Please answer in bullet points. Focus on practical examples."
     )
     limit: Optional[int] = Field(
         15,
-        description="Số câu nguồn tối đa cần lấy (mặc định 15)",
+        description="Maximum number of source sentences to retrieve (default: 15)",
         ge=5,
         le=50,
         example=15
     )
     buffer_percentage: Optional[int] = Field(
         15,
-        description="Buffer % thêm khi lấy câu (10-20%, mặc định 15%)",
+        description="Buffer percentage for extra sentences (10-20%, default: 15%)",
         ge=10,
         le=20,
         example=15
@@ -44,7 +44,7 @@ class AskRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "query": "What are the duties of a class teacher?",
-                "custom_prompt": "Please answer in Vietnamese. Use bullet points.",
+                "custom_prompt": "Please answer in bullet points.",
                 "limit": 15,
                 "buffer_percentage": 15
             }
@@ -52,28 +52,28 @@ class AskRequest(BaseModel):
 
 
 class ContinueRequest(BaseModel):
-    """Request để tiếp tục đào sâu câu trả lời (Tell me more)"""
+    """Request to continue and explore deeper (Tell me more)"""
     session_id: str = Field(
         ...,
-        description="Session ID từ response của /ask",
+        description="Session ID from /ask response",
         example="550e8400-e29b-41d4-a716-446655440000"
     )
     custom_prompt: Optional[str] = Field(
         None,
-        description="Custom prompt/instructions cho lần continue này",
+        description="Custom prompt/instructions for this continue request",
         max_length=1000,
         example="Focus more on specific regulations and rules."
     )
     limit: Optional[int] = Field(
         15,
-        description="Số câu nguồn tối đa cần lấy",
+        description="Maximum number of source sentences to retrieve",
         ge=5,
         le=50,
         example=15
     )
     buffer_percentage: Optional[int] = Field(
         15,
-        description="Buffer % thêm khi lấy câu (10-20%)",
+        description="Buffer percentage for extra sentences (10-20%)",
         ge=10,
         le=20,
         example=15
@@ -91,10 +91,10 @@ class ContinueRequest(BaseModel):
 
 
 class UploadSettings(BaseModel):
-    """Settings cho upload file"""
+    """Settings for file upload"""
     sentences_per_level: Optional[int] = Field(
         5,
-        description="Số câu mỗi level (mặc định 5)",
+        description="Number of sentences per level (default: 5)",
         ge=1,
         le=20,
         example=5
@@ -113,11 +113,11 @@ class UploadSettings(BaseModel):
 # ============================================================
 
 class SourceSentence(BaseModel):
-    """Một câu nguồn từ tài liệu"""
-    text: str = Field(..., description="Nội dung câu")
-    level: int = Field(..., description="Level của câu (0, 1, 2...)")
-    score: float = Field(..., description="Điểm similarity với câu hỏi")
-    sentence_index: Optional[int] = Field(None, description="Thứ tự câu trong file gốc")
+    """A source sentence from the document"""
+    text: str = Field(..., description="Sentence content")
+    level: int = Field(..., description="Sentence level (0, 1, 2...)")
+    score: float = Field(..., description="Similarity score with the query")
+    sentence_index: Optional[int] = Field(None, description="Sentence index in original file")
 
     class Config:
         json_schema_extra = {
@@ -131,50 +131,50 @@ class SourceSentence(BaseModel):
 
 
 class AskResponse(BaseModel):
-    """Response đầy đủ theo yêu cầu khách hàng"""
+    """Full response as per client requirements"""
     session_id: str = Field(
         ..., 
-        description="ID session để dùng cho /continue (Tell me more)"
+        description="Session ID to use for /continue (Tell me more)"
     )
     answer: str = Field(
         ..., 
-        description="Câu trả lời từ AI"
+        description="AI generated answer"
     )
     question_variants: str = Field(
         ..., 
-        description="3-4 biến thể của câu hỏi gốc"
+        description="3-4 variants of the original question"
     )
     keyword_meaning: str = Field(
         ..., 
-        description="Giải nghĩa các keywords chính"
+        description="Explanation of main keywords"
     )
     source_sentences: List[SourceSentence] = Field(
         ..., 
-        description="Danh sách câu nguồn đã dùng, group theo level"
+        description="List of source sentences used, grouped by level"
     )
     current_level: int = Field(
         ..., 
-        description="Level cao nhất đã sử dụng trong lần trả lời này"
+        description="Highest level used in this response"
     )
     max_level: int = Field(
         ..., 
-        description="Level cao nhất có sẵn trong dữ liệu"
+        description="Highest level available in data"
     )
     prompt_used: str = Field(
         ..., 
-        description="Full prompt đã gửi cho LLM (để debug/verify)"
+        description="Full prompt sent to LLM (for debug/verify)"
     )
     can_continue: bool = Field(
         ..., 
-        description="Có thể bấm 'Tell me more' để đào sâu thêm không"
+        description="Can click 'Tell me more' to explore deeper"
     )
     sentences_retrieved: int = Field(
         ...,
-        description="Số câu thực tế đã lấy (sau khi áp dụng buffer)"
+        description="Actual number of sentences retrieved (after buffer applied)"
     )
     buffer_applied: int = Field(
         ...,
-        description="Buffer % đã áp dụng"
+        description="Buffer percentage applied"
     )
 
     class Config:
@@ -192,25 +192,25 @@ class AskResponse(BaseModel):
                 "prompt_used": "[Full prompt here...]",
                 "can_continue": True,
                 "sentences_retrieved": 17,
-                "buffer_applied": "15%"
+                "buffer_applied": 15
             }
         }
 
 
 class ContinueResponse(BaseModel):
-    """Response khi user bấm Tell me more"""
+    """Response when user clicks Tell me more"""
     session_id: str = Field(..., description="Session ID")
-    answer: str = Field(..., description="Câu trả lời mở rộng từ AI")
-    question_variants: str = Field(..., description="Biến thể câu hỏi MỚI (không lặp)")
-    keyword_meaning: str = Field(..., description="Keyword meaning MỚI/sâu hơn")
-    source_sentences: List[SourceSentence] = Field(..., description="Câu nguồn từ level sâu hơn")
-    current_level: int = Field(..., description="Level hiện tại")
-    max_level: int = Field(..., description="Level cao nhất có sẵn")
-    prompt_used: str = Field(..., description="Full prompt đã gửi")
-    can_continue: bool = Field(..., description="Còn level để đi sâu không")
-    continue_count: int = Field(..., description="Số lần đã bấm Continue")
-    sentences_retrieved: int = Field(..., description="Số câu đã lấy")
-    buffer_applied: int = Field(..., description="Buffer % đã áp dụng")
+    answer: str = Field(..., description="Expanded answer from AI")
+    question_variants: str = Field(..., description="NEW question variants (no repeats)")
+    keyword_meaning: str = Field(..., description="NEW/deeper keyword meanings")
+    source_sentences: List[SourceSentence] = Field(..., description="Source sentences from deeper levels")
+    current_level: int = Field(..., description="Current level")
+    max_level: int = Field(..., description="Highest level available")
+    prompt_used: str = Field(..., description="Full prompt sent")
+    can_continue: bool = Field(..., description="Are there more levels to explore")
+    continue_count: int = Field(..., description="Number of times Continue was clicked")
+    sentences_retrieved: int = Field(..., description="Number of sentences retrieved")
+    buffer_applied: int = Field(..., description="Buffer percentage applied")
 
     class Config:
         json_schema_extra = {
@@ -228,19 +228,19 @@ class ContinueResponse(BaseModel):
                 "can_continue": True,
                 "continue_count": 1,
                 "sentences_retrieved": 17,
-                "buffer_applied": "15%"
+                "buffer_applied": 15
             }
         }
 
 
 class UploadResponse(BaseModel):
-    """Response sau khi upload file thành công"""
-    file_id: str = Field(..., description="ID của file đã upload")
-    filename: str = Field(..., description="Tên file gốc")
-    total_sentences: int = Field(..., description="Tổng số câu đã xử lý")
-    max_level: int = Field(..., description="Level cao nhất (0 đến max_level)")
-    message: str = Field(..., description="Thông báo kết quả")
-    buffer_info: Optional[str] = Field(None, description="Thông tin về buffer capability")
+    """Response after successful file upload"""
+    file_id: str = Field(..., description="Uploaded file ID")
+    filename: str = Field(..., description="Original filename")
+    total_sentences: int = Field(..., description="Total sentences processed")
+    max_level: int = Field(..., description="Highest level (0 to max_level)")
+    message: str = Field(..., description="Result message")
+    buffer_info: Optional[str] = Field(None, description="Buffer capability information")
 
     class Config:
         json_schema_extra = {
@@ -256,11 +256,11 @@ class UploadResponse(BaseModel):
 
 
 class DocumentStats(BaseModel):
-    """Thống kê documents trong index"""
-    total_documents: int = Field(..., description="Tổng số documents")
-    max_level: int = Field(..., description="Level cao nhất")
-    levels_available: int = Field(..., description="Số levels có sẵn cho Tell me more")
-    ready: bool = Field(..., description="Sẵn sàng để query")
+    """Document statistics in index"""
+    total_documents: int = Field(..., description="Total documents")
+    max_level: int = Field(..., description="Highest level")
+    levels_available: int = Field(..., description="Number of levels available for Tell me more")
+    ready: bool = Field(..., description="Ready to accept queries")
 
     class Config:
         json_schema_extra = {
@@ -275,13 +275,13 @@ class DocumentStats(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response"""
-    status: str = Field(..., description="Trạng thái hệ thống: healthy, degraded, unhealthy")
-    elasticsearch: str = Field(..., description="Trạng thái Elasticsearch cluster")
-    elasticsearch_connected: bool = Field(..., description="Kết nối ES thành công")
-    documents_indexed: int = Field(..., description="Số documents đã index")
-    active_sessions: int = Field(..., description="Số sessions đang hoạt động")
-    ready: bool = Field(..., description="Sẵn sàng phục vụ queries")
-    message: str = Field(..., description="Thông báo trạng thái")
+    status: str = Field(..., description="System status: healthy, degraded, unhealthy")
+    elasticsearch: str = Field(..., description="Elasticsearch cluster status")
+    elasticsearch_connected: bool = Field(..., description="ES connection successful")
+    documents_indexed: int = Field(..., description="Number of indexed documents")
+    active_sessions: int = Field(..., description="Number of active sessions")
+    ready: bool = Field(..., description="Ready to serve queries")
+    message: str = Field(..., description="Status message")
 
     class Config:
         json_schema_extra = {
@@ -299,8 +299,8 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Error response format"""
-    detail: str = Field(..., description="Chi tiết lỗi")
-    error_code: Optional[str] = Field(None, description="Mã lỗi (nếu có)")
+    detail: str = Field(..., description="Error details")
+    error_code: Optional[str] = Field(None, description="Error code (if available)")
     
     class Config:
         json_schema_extra = {

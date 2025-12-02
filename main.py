@@ -2,7 +2,7 @@
 """
 AI Vector Search Demo (Elasticsearch)
 =====================================
-Full-featured Q&A system với:
+Full-featured Q&A system with:
 - Multi-level retrieval (Level 0, 1, 2...)
 - Structured prompt builder with custom prompts
 - "Tell me more" functionality
@@ -50,47 +50,47 @@ from models.request_models import (
 app = FastAPI(
     title="AI Vector Search Demo (Elasticsearch)",
     description="""
-## 🤖 Hệ thống Q&A thông minh với Multi-level Retrieval
+## 🤖 Intelligent Q&A System with Multi-level Retrieval
 
-### 📋 Tổng quan
-Hệ thống sử dụng Elasticsearch làm vector database, OpenAI cho embeddings và chat.
-Hỗ trợ **7 modules chính** theo yêu cầu client:
+### 📋 Overview
+This system uses Elasticsearch as a vector database, OpenAI for embeddings and chat.
+Supports **7 main modules** as per client requirements:
 
-### ✅ Các Modules:
-1. **File Upload** - Upload file .txt với streaming (tránh tràn RAM)
-2. **Sentence Embeddings** - Tạo vector embeddings cho từng câu
-3. **Query Processing** - Xử lý câu hỏi với buffer 10-20%
-4. **Deduplication** - Loại bỏ câu trùng lặp
-5. **Prompt Builder** - Xây dựng prompt có cấu trúc + custom prompts
-6. **Response Generation** - Sinh câu trả lời từ LLM
-7. **"Tell me more"** - Đào sâu vào các levels tiếp theo
+### ✅ Modules:
+1. **File Upload** - Upload .txt files with streaming (prevents RAM overflow)
+2. **Sentence Embeddings** - Create vector embeddings for each sentence
+3. **Query Processing** - Process queries with 10-20% buffer
+4. **Deduplication** - Remove duplicate sentences
+5. **Prompt Builder** - Build structured prompts + custom prompts
+6. **Response Generation** - Generate answers from LLM
+7. **"Tell me more"** - Dive deeper into subsequent levels
 
-### 🔄 Flow hoạt động:
+### 🔄 Workflow:
 ```
-POST /upload → Tách câu → Embedding → Lưu ES (by level)
+POST /upload → Split sentences → Embedding → Store in ES (by level)
 POST /ask → Vector search + Buffer → Prompt Builder → LLM → Response + session_id
-POST /continue → Dùng session_id → Level tiếp theo → Expand answer
+POST /continue → Use session_id → Next level → Expand answer
 ```
 
-### 💡 Features nổi bật:
-- **Buffer 10-20%**: Lấy thêm câu dự phòng để cải thiện kết quả
-- **Custom Prompts**: Người dùng có thể thêm instructions riêng
-- **Streaming Upload**: Đọc file theo chunks để tránh tràn RAM
-- **Session Management**: Theo dõi cuộc hội thoại cho "Tell me more"
+### 💡 Key Features:
+- **Buffer 10-20%**: Retrieve extra sentences to improve results
+- **Custom Prompts**: Users can add their own instructions
+- **Streaming Upload**: Read files in chunks to prevent RAM overflow
+- **Session Management**: Track conversations for "Tell me more"
     """,
     version="2.0.0",
     openapi_tags=[
         {
             "name": "📁 File Management",
-            "description": "Upload, replace, và quản lý documents trong Elasticsearch"
+            "description": "Upload, replace, and manage documents in Elasticsearch"
         },
         {
             "name": "❓ Q&A",
-            "description": "Hỏi đáp với multi-level retrieval và custom prompts"
+            "description": "Q&A with multi-level retrieval and custom prompts"
         },
         {
             "name": "📊 Info",
-            "description": "Health check và thông tin hệ thống"
+            "description": "Health check and system information"
         }
     ],
     responses={
@@ -100,7 +100,7 @@ POST /continue → Dùng session_id → Level tiếp theo → Expand answer
     }
 )
 
-# CORS cho dễ test từ frontend
+# CORS for easy frontend testing
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -109,7 +109,7 @@ app.add_middleware(
 )
 
 
-# Khởi tạo index khi app start
+# Initialize index on app startup
 @app.on_event("startup")
 def startup_event():
     init_index()
@@ -126,31 +126,31 @@ CHUNK_SIZE = 1024 * 1024  # 1MB chunks for streaming
     "/upload",
     response_model=UploadResponse,
     tags=["📁 File Management"],
-    summary="Upload và index file .txt",
+    summary="Upload and index .txt file",
     description="""
-## Upload file văn bản
+## Upload Text File
 
-### ⚙️ Xử lý:
-1. **Streaming read** - Đọc file theo chunks (1MB) để tránh tràn RAM
-2. **Sentence splitting** - Tách thành câu riêng lẻ
-3. **Level assignment** - Mỗi 5 câu = 1 level
-4. **Batch embedding** - Tạo embeddings theo batch (hiệu quả)
-5. **Elasticsearch indexing** - Lưu vào vector database
+### ⚙️ Processing:
+1. **Streaming read** - Read file in chunks (1MB) to prevent RAM overflow
+2. **Sentence splitting** - Split into individual sentences
+3. **Level assignment** - Every 5 sentences = 1 level
+4. **Batch embedding** - Create embeddings in batches (efficient)
+5. **Elasticsearch indexing** - Store in vector database
 
-### 📊 Kết quả trả về:
-- `file_id`: ID duy nhất của file
-- `filename`: Tên file gốc
-- `total_sentences`: Số câu đã index
-- `max_level`: Level cao nhất (để biết có bao nhiêu levels cho "Tell me more")
-- `buffer_info`: Thông tin về khả năng buffer
+### 📊 Response:
+- `file_id`: Unique file ID
+- `filename`: Original filename
+- `total_sentences`: Number of indexed sentences
+- `max_level`: Highest level (indicates how many levels for "Tell me more")
+- `buffer_info`: Buffer capability information
 
-### ⚠️ Lưu ý:
-- Chỉ hỗ trợ file `.txt`
-- Encoding: UTF-8 hoặc Latin-1 (auto-detect)
+### ⚠️ Notes:
+- Only `.txt` files supported
+- Encoding: UTF-8 or Latin-1 (auto-detect)
     """,
     responses={
         200: {
-            "description": "File uploaded thành công",
+            "description": "File uploaded successfully",
             "content": {
                 "application/json": {
                     "example": {
@@ -163,23 +163,17 @@ CHUNK_SIZE = 1024 * 1024  # 1MB chunks for streaming
                 }
             }
         },
-        400: {"description": "Invalid file type hoặc file rỗng"}
+        400: {"description": "Invalid file type or empty file"}
     }
 )
 async def upload_file(
     file: UploadFile = File(
         ..., 
-        description="File .txt cần upload. Kích thước tối đa khuyến nghị: 10MB"
+        description="The .txt file to upload. Recommended max size: 10MB"
     )
 ):
     """
-    Upload file .txt với streaming read để tối ưu RAM.
-    
-    File sẽ được:
-    - Đọc theo chunks 1MB
-    - Tách thành câu
-    - Tạo embeddings theo batch
-    - Index vào Elasticsearch với level
+    Upload .txt file with streaming read for RAM optimization.
     """
     if not file.filename.endswith(".txt"):
         raise HTTPException(
@@ -187,7 +181,7 @@ async def upload_file(
             detail="Only .txt files are supported. Please convert your document to .txt format."
         )
 
-    # Streaming read để tránh tràn RAM với file lớn
+    # Streaming read to prevent RAM overflow with large files
     chunks = []
     total_size = 0
     MAX_SIZE = 50 * 1024 * 1024  # 50MB limit
@@ -219,7 +213,7 @@ async def upload_file(
             detail="No valid sentences found in file. Make sure the file contains readable text."
         )
 
-    # Index sentences với batch processing và lấy max_level
+    # Index sentences with batch processing
     file_id = str(uuid.uuid4())
     max_level = index_sentences_batch(sentences, file_id=file_id, batch_size=20)
 
@@ -237,47 +231,42 @@ async def upload_file(
     "/replace",
     response_model=UploadResponse,
     tags=["📁 File Management"],
-    summary="Thay thế toàn bộ dữ liệu",
+    summary="Replace all data",
     description="""
-## Thay thế dữ liệu hiện tại bằng file mới
+## Replace Current Data with New File
 
-### ⚙️ Xử lý:
-1. **Xóa tất cả** documents cũ trong Elasticsearch
-2. **Upload và index** file mới
+### ⚙️ Processing:
+1. **Delete all** old documents in Elasticsearch
+2. **Upload and index** new file
 
-### ⚠️ Cảnh báo:
-- Hành động này KHÔNG THỂ hoàn tác
-- Tất cả sessions hiện tại sẽ bị invalid
+### ⚠️ Warning:
+- This action CANNOT be undone
+- All current sessions will be invalidated
     """
 )
 async def replace_file(
-    file: UploadFile = File(..., description="File .txt mới để thay thế")
+    file: UploadFile = File(..., description="New .txt file to replace current data")
 ):
-    """Thay thế toàn bộ dữ liệu bằng file mới."""
-    # Xóa dữ liệu cũ
+    """Replace all data with new file."""
     delete_all_documents()
-    
-    # Clear tất cả sessions
     session_manager.clear_all()
-    
-    # Upload file mới
     return await upload_file(file)
 
 
 @app.delete(
     "/documents",
     tags=["📁 File Management"],
-    summary="Xóa tất cả documents",
+    summary="Delete all documents",
     description="""
-## Xóa toàn bộ dữ liệu
+## Delete All Data
 
-### ⚠️ Cảnh báo:
-- Hành động này KHÔNG THỂ hoàn tác
-- Cần upload file mới trước khi sử dụng /ask
+### ⚠️ Warning:
+- This action CANNOT be undone
+- You need to upload a new file before using /ask
     """,
     responses={
         200: {
-            "description": "Xóa thành công",
+            "description": "Deleted successfully",
             "content": {
                 "application/json": {
                     "example": {"message": "All documents deleted successfully", "documents_deleted": 50}
@@ -287,7 +276,7 @@ async def replace_file(
     }
 )
 async def delete_all():
-    """Xóa tất cả documents trong Elasticsearch."""
+    """Delete all documents in Elasticsearch."""
     count = get_document_count()
     success = delete_all_documents()
     session_manager.clear_all()
@@ -301,19 +290,19 @@ async def delete_all():
     "/documents/count",
     response_model=DocumentStats,
     tags=["📁 File Management"],
-    summary="Lấy thống kê documents",
+    summary="Get document statistics",
     description="""
-## Thống kê documents trong Elasticsearch
+## Document Statistics in Elasticsearch
 
-### 📊 Trả về:
-- `total_documents`: Tổng số câu đã index
-- `max_level`: Level cao nhất
-- `levels_available`: Số levels có thể dùng cho "Tell me more"
-- `ready`: True nếu có dữ liệu, sẵn sàng nhận câu hỏi
+### 📊 Returns:
+- `total_documents`: Total indexed sentences
+- `max_level`: Highest level
+- `levels_available`: Number of levels for "Tell me more"
+- `ready`: True if data exists, ready to accept queries
     """
 )
 async def get_count():
-    """Lấy thống kê documents hiện có."""
+    """Get current document statistics."""
     count = get_document_count()
     max_level = get_max_level()
     return DocumentStats(
@@ -332,42 +321,42 @@ async def get_count():
     "/ask",
     response_model=AskResponse,
     tags=["❓ Q&A"],
-    summary="Đặt câu hỏi",
+    summary="Ask a question",
     description="""
-## Hỏi đáp với Multi-level Retrieval
+## Q&A with Multi-level Retrieval
 
-### 🔄 Flow xử lý:
-1. **Vector Search** - Tìm câu nguồn liên quan (với buffer 10-20%)
-2. **Deduplicate** - Loại bỏ câu trùng lặp
-3. **Generate Variants** - Tạo 3-4 biến thể câu hỏi
-4. **Extract Keywords** - Giải nghĩa keywords quan trọng
-5. **Build Prompt** - Xây dựng prompt có cấu trúc + custom instructions
-6. **Call LLM** - Sinh câu trả lời
+### 🔄 Processing Flow:
+1. **Vector Search** - Find relevant source sentences (with 10-20% buffer)
+2. **Deduplicate** - Remove duplicate sentences
+3. **Generate Variants** - Create 3-4 question variants
+4. **Extract Keywords** - Extract and explain important keywords
+5. **Build Prompt** - Build structured prompt + custom instructions
+6. **Call LLM** - Generate answer
 
 ### 📥 Parameters:
-- `query` (required): Câu hỏi của người dùng
-- `limit`: Số câu nguồn tối đa (default: 15)
-- `buffer_percentage`: % câu dự phòng (10-20%)
-- `custom_prompt`: Instructions tùy chỉnh từ người dùng
+- `query` (required): User's question
+- `limit`: Maximum source sentences (default: 15)
+- `buffer_percentage`: Extra sentences percentage (10-20%)
+- `custom_prompt`: User's custom instructions
 
 ### 📤 Response:
-- `session_id`: Dùng cho /continue (Tell me more)
-- `answer`: Câu trả lời từ LLM
-- `source_sentences`: Các câu nguồn đã sử dụng
-- `can_continue`: True nếu có thể đào sâu thêm
+- `session_id`: Use for /continue (Tell me more)
+- `answer`: LLM's answer
+- `source_sentences`: Source sentences used
+- `can_continue`: True if can explore deeper
 
 ### 💡 Tips:
-- Sử dụng `buffer_percentage=15` để cân bằng độ chính xác và độ đa dạng
-- Thêm `custom_prompt` để điều chỉnh style/format câu trả lời
+- Use `buffer_percentage=15` for balance between accuracy and diversity
+- Add `custom_prompt` to adjust answer style/format
     """,
     responses={
         200: {
-            "description": "Câu trả lời thành công",
+            "description": "Answer generated successfully",
             "content": {
                 "application/json": {
                     "example": {
                         "session_id": "abc-123",
-                        "answer": "Dựa trên thông tin tìm được...",
+                        "answer": "Based on the information found...",
                         "question_variants": "1. What is X?\n2. Explain X...",
                         "source_sentences": [{"text": "Sample sentence", "level": 0, "score": 0.95}],
                         "current_level": 0,
@@ -381,19 +370,16 @@ async def get_count():
 )
 async def ask(req: AskRequest):
     """
-    Nhận câu hỏi từ user, thực hiện full flow với buffer support.
-    
-    Hỗ trợ custom_prompt để người dùng có thể điều chỉnh
-    cách LLM trả lời (format, style, language, etc.)
+    Receive user question and execute full flow with buffer support.
     """
-    # Kiểm tra có data không
+    # Check if data exists
     if get_document_count() == 0:
         raise HTTPException(
             status_code=404, 
             detail="No documents found. Please upload a file first using POST /upload"
         )
     
-    # 1. Lấy câu nguồn từ Elasticsearch với buffer support
+    # 1. Get source sentences from Elasticsearch with buffer support
     source_sentences = get_top_unique_sentences_grouped(
         req.query, 
         limit=req.limit,
@@ -405,13 +391,11 @@ async def ask(req: AskRequest):
             detail="No source sentences found matching your query. Try rephrasing your question."
         )
 
-    # 2. Tạo biến thể câu hỏi + giải nghĩa keyword
+    # 2. Generate question variants + extract keywords
     question_variants = generate_question_variants(req.query)
     keyword_meaning = extract_keywords(req.query)
 
-    # 3. Build final prompt với custom_prompt support
-
-    # 3. Build final prompt với custom_prompt support
+    # 3. Build final prompt with custom_prompt support
     prompt = build_final_prompt(
         user_query=req.query,
         question_variants=question_variants,
@@ -421,14 +405,14 @@ async def ask(req: AskRequest):
         custom_prompt=req.custom_prompt
     )
 
-    # 4. Gọi LLM
+    # 4. Call LLM
     answer = call_llm(prompt)
     
-    # 5. Tạo session để track conversation
+    # 5. Create session to track conversation
     max_level = get_max_level()
     session = session_manager.create_session(req.query, max_level)
     
-    # Cập nhật session với các câu đã dùng
+    # Update session with used sentences
     used_texts = [s["text"] for s in source_sentences]
     session_manager.update_session(
         session.session_id,
@@ -437,10 +421,10 @@ async def ask(req: AskRequest):
         keywords=keyword_meaning
     )
     
-    # Tính current_level từ source sentences
+    # Calculate current_level from source sentences
     current_level = max(s["level"] for s in source_sentences) if source_sentences else 0
     
-    # Tính số câu thực tế được retrieve với buffer
+    # Calculate buffer applied
     buffer_applied = req.buffer_percentage if req.buffer_percentage else 0
 
     return AskResponse(
@@ -466,46 +450,46 @@ async def ask(req: AskRequest):
     "/continue",
     response_model=ContinueResponse,
     tags=["❓ Q&A"],
-    summary="Tell me more - Đào sâu thêm",
+    summary="Tell me more - Explore deeper",
     description="""
-## Mở rộng câu trả lời với thông tin từ levels sâu hơn
+## Expand Answer with Information from Deeper Levels
 
-### 🔄 Flow xử lý:
-1. **Get Session** - Lấy thông tin từ session_id
-2. **Increase Level** - Chuyển sang Level 1, 2, 3...
-3. **Get NEW sentences** - Lấy câu nguồn MỚI (exclude đã dùng)
-4. **Generate NEW variants** - Tạo biến thể câu hỏi MỚI
-5. **Update Keywords** - Bổ sung keywords mới
-6. **Build Prompt** - Prompt cho chế độ continue + custom instructions
-7. **Call LLM** - Sinh câu trả lời mở rộng
+### 🔄 Processing Flow:
+1. **Get Session** - Retrieve info from session_id
+2. **Increase Level** - Move to Level 1, 2, 3...
+3. **Get NEW sentences** - Get NEW source sentences (exclude used ones)
+4. **Generate NEW variants** - Create NEW question variants
+5. **Update Keywords** - Add new keywords
+6. **Build Prompt** - Prompt for continue mode + custom instructions
+7. **Call LLM** - Generate expanded answer
 
 ### 📥 Parameters:
-- `session_id` (required): ID từ response của /ask
-- `custom_prompt`: Instructions tùy chỉnh bổ sung
-- `buffer_percentage`: % câu dự phòng (10-20%)
+- `session_id` (required): ID from /ask response
+- `custom_prompt`: Additional custom instructions
+- `buffer_percentage`: Extra sentences percentage (10-20%)
 
 ### 📤 Response:
-- Tương tự /ask nhưng với thông tin từ levels sâu hơn
-- `can_continue`: False khi đã hết levels
+- Similar to /ask but with info from deeper levels
+- `can_continue`: False when all levels explored
 
 ### 💡 Usage Pattern:
 ```
 1. POST /ask → get session_id
-2. POST /continue với session_id → get more info
+2. POST /continue with session_id → get more info
 3. Repeat POST /continue until can_continue=false
 ```
     """,
     responses={
-        200: {"description": "Câu trả lời mở rộng thành công"},
-        404: {"description": "Session không tồn tại hoặc đã hết hạn"},
-        400: {"description": "Đã hết levels để đào sâu"}
+        200: {"description": "Expanded answer generated successfully"},
+        404: {"description": "Session not found or expired"},
+        400: {"description": "No more levels to explore"}
     }
 )
 async def continue_conversation(req: ContinueRequest):
     """
-    "Tell me more" - Đào sâu vào các level tiếp theo với buffer support.
+    "Tell me more" - Explore deeper levels with buffer support.
     """
-    # Lấy session
+    # Get session
     session = session_manager.get_session(req.session_id)
     if not session:
         raise HTTPException(
@@ -513,17 +497,17 @@ async def continue_conversation(req: ContinueRequest):
             detail="Session not found or expired (30 min timeout). Please ask a new question with POST /ask"
         )
     
-    # Kiểm tra có thể continue không
+    # Check if can continue
     if session.current_level >= session.max_level_available:
         raise HTTPException(
             status_code=400,
             detail="No more levels available. All information has been explored. Start a new question with POST /ask"
         )
     
-    # Tăng level
+    # Increase level
     next_level = session.current_level + 1
     
-    # Lấy câu nguồn từ level mới (exclude các câu đã dùng) với buffer
+    # Get source sentences from new level (exclude used ones) with buffer
     source_sentences = get_sentences_by_level(
         query=session.original_query,
         start_level=next_level,
@@ -538,21 +522,21 @@ async def continue_conversation(req: ContinueRequest):
             detail=f"No new sentences found at Level {next_level}. Try asking a different question."
         )
     
-    # Tạo biến thể câu hỏi MỚI (không lặp với các lần trước)
+    # Generate NEW question variants (don't repeat previous ones)
     question_variants = generate_question_variants(
         session.original_query,
         previous_variants=session.used_variants,
         continue_mode=True
     )
     
-    # Update keyword meaning (tìm keywords mới/sâu hơn)
+    # Update keyword meaning (find new/deeper keywords)
     keyword_meaning = extract_keywords(
         session.original_query,
         previous_keywords=session.previous_keywords,
         continue_mode=True
     )
     
-    # Build prompt mới với custom_prompt support
+    # Build new prompt with custom_prompt support
     prompt = build_final_prompt(
         user_query=session.original_query,
         question_variants=question_variants,
@@ -563,10 +547,10 @@ async def continue_conversation(req: ContinueRequest):
         custom_prompt=req.custom_prompt
     )
     
-    # Gọi LLM
+    # Call LLM
     answer = call_llm(prompt)
     
-    # Cập nhật session
+    # Update session
     used_texts = [s["text"] for s in source_sentences]
     session_manager.update_session(
         session.session_id,
@@ -576,7 +560,7 @@ async def continue_conversation(req: ContinueRequest):
         increment_level=True
     )
     
-    # Tính current_level và buffer info
+    # Calculate current_level and buffer info
     current_level = max(s["level"] for s in source_sentences) if source_sentences else next_level
     buffer_applied = req.buffer_percentage if req.buffer_percentage else 0
     
@@ -603,11 +587,11 @@ async def continue_conversation(req: ContinueRequest):
 @app.get(
     "/",
     tags=["📊 Info"],
-    summary="Thông tin API",
-    description="Trả về thông tin tổng quan về API và các endpoints"
+    summary="API Information",
+    description="Returns overview information about the API and endpoints"
 )
 async def root():
-    """Thông tin tổng quan về API."""
+    """API overview information."""
     return {
         "message": "🤖 AI Vector Search Demo with Elasticsearch",
         "version": "2.0.0",
@@ -624,20 +608,20 @@ async def root():
         ],
         "endpoints": {
             "file_management": {
-                "POST /upload": "Upload file .txt (streaming)",
-                "POST /replace": "Thay thế toàn bộ dữ liệu",
-                "DELETE /documents": "Xóa tất cả",
-                "GET /documents/count": "Thống kê documents"
+                "POST /upload": "Upload .txt file (streaming)",
+                "POST /replace": "Replace all data",
+                "DELETE /documents": "Delete all",
+                "GET /documents/count": "Get document statistics"
             },
             "qa": {
-                "POST /ask": "Hỏi câu hỏi → nhận session_id",
-                "POST /continue": "Tell me more với session_id"
+                "POST /ask": "Ask question → get session_id",
+                "POST /continue": "Tell me more with session_id"
             }
         },
         "quick_start": [
-            "1. POST /upload với file .txt",
-            "2. POST /ask với query và optional custom_prompt",
-            "3. POST /continue với session_id để đào sâu"
+            "1. POST /upload with .txt file",
+            "2. POST /ask with query and optional custom_prompt",
+            "3. POST /continue with session_id to explore deeper"
         ]
     }
 
@@ -648,23 +632,22 @@ async def root():
     tags=["📊 Info"],
     summary="Health check",
     description="""
-## Kiểm tra trạng thái hệ thống
+## Check System Status
 
-### Kiểm tra:
+### Checks:
 - Elasticsearch connection
 - Documents count
 - Active sessions
 
 ### Status codes:
-- `healthy`: Hệ thống hoạt động bình thường
-- `degraded`: Có vấn đề nhưng vẫn hoạt động
-- `unhealthy`: Hệ thống không hoạt động
+- `healthy`: System operating normally
+- `degraded`: Issues but still operational
+- `unhealthy`: System not operational
     """
 )
 async def health():
-    """Health check endpoint với chi tiết về ES và sessions."""
+    """Health check endpoint with ES and session details."""
     try:
-        # Check Elasticsearch
         es_health = es.cluster.health()
         es_status = es_health["status"]
         es_connected = True
@@ -675,7 +658,6 @@ async def health():
     doc_count = get_document_count()
     active_sessions = session_manager.get_active_count()
     
-    # Determine overall status
     if es_connected and doc_count > 0:
         status = "healthy"
     elif es_connected:

@@ -1,12 +1,12 @@
 # services/retriever.py
 """
-Retriever Module - Multi-level retrieval cho Q&A
-Hỗ trợ:
+Retriever Module - Multi-level retrieval for Q&A
+Supports:
 - Level-based retrieval (Level 0, 1, 2...)
-- Buffer 10-20% khi lấy câu
-- Exclude các câu đã dùng
+- Buffer 10-20% when retrieving sentences
+- Exclude previously used sentences
 - Deduplicate
-- Batch processing để tránh tràn RAM
+- Batch processing to prevent RAM overflow
 """
 from typing import List, Dict, Any, Set, Optional, Generator
 from vector.elastic_client import es
@@ -17,7 +17,7 @@ INDEX = settings.ES_INDEX_NAME
 
 # Constants
 DEFAULT_SENTENCES_PER_LEVEL = 5
-MAX_BATCH_SIZE = 50  # Batch size cho embedding để tránh tràn RAM
+MAX_BATCH_SIZE = 50  # Batch size for embedding to prevent RAM overflow
 
 
 def index_sentences_batch(
@@ -27,16 +27,16 @@ def index_sentences_batch(
     batch_size: int = MAX_BATCH_SIZE
 ) -> int:
     """
-    Index danh sách câu vào Elasticsearch với batch processing.
-    Tránh tràn RAM bằng cách xử lý từng batch.
+    Index list of sentences into Elasticsearch with batch processing.
+    Prevents RAM overflow by processing in batches.
     
     Args:
-        sentences: Danh sách câu
-        file_id: ID của file
-        sentences_per_level: Số câu mỗi level
-        batch_size: Kích thước batch để xử lý
+        sentences: List of sentences
+        file_id: File ID
+        sentences_per_level: Number of sentences per level
+        batch_size: Batch size for processing
     
-    Returns: max_level được tạo
+    Returns: max_level created
     """
     max_level = 0
     total_sentences = len(sentences)

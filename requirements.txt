@@ -7,3 +7,5 @@ pydantic-settings
 elasticsearch>=8.0.0
 openai>=1.0.0
 nltk
+streamlit
+requests

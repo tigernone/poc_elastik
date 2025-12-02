@@ -1,76 +1,79 @@
 # AI Vector Search Demo (Elasticsearch)
 
-**Full-featured Q&A system** với multi-level retrieval, structured prompt builder, và "Tell me more" functionality.
+**Full-featured Q&A system** with multi-level retrieval, structured prompt builder, and "Tell me more" functionality.
 
-## 🎯 Mục tiêu dự án
+## 🎯 Project Goals
 
-Demo AI Q&A engine với:
-- **Multi-level retrieval** (Level 0, 1, 2...) - đào sâu dần vào tài liệu
-- **Structured prompt builder** - prompt có cấu trúc rõ ràng
-- **"Tell me more"** - cho phép user đào sâu thêm thông tin
-- **Source transparency** - luôn show các câu nguồn AI đang dùng
+Demo AI Q&A engine with:
+- **Multi-level retrieval** (Level 0, 1, 2...) - gradually dive deeper into documents
+- **Structured prompt builder** - clearly structured prompts
+- **"Tell me more"** - allows users to explore deeper information
+- **Source transparency** - always shows source sentences AI is using
+- **Custom prompts** - users can add their own instructions
+- **Buffer 10-20%** - retrieve extra sentences for better results
 
-## 📁 Kiến trúc
+## 📁 Architecture
 
 ```
 ai-vector-elastic-demo/
 │── main.py                     # FastAPI app + all endpoints
+│── streamlit_app.py            # Streamlit UI (web interface)
 │── config.py                   # Load environment variables
 │── requirements.txt            # Dependencies
-│── .env                        # Environment variables (cần cấu hình)
+│── .env                        # Environment variables (needs configuration)
 │── services/
-│     ├── splitter.py           # Tách văn bản thành câu
+│     ├── splitter.py           # Split text into sentences
 │     ├── embedder.py           # OpenAI embeddings
-│     ├── retriever.py          # Multi-level retrieval từ ES
+│     ├── retriever.py          # Multi-level retrieval from ES
 │     ├── prompt_builder.py     # Build structured prompt
-│     ├── session_manager.py    # Quản lý conversation sessions
+│     ├── session_manager.py    # Manage conversation sessions
 │── vector/
 │     ├── elastic_client.py     # Elasticsearch client
 │── models/
 │     ├── request_models.py     # Pydantic schemas
-│── uploads/                    # Thư mục lưu file tạm
+│── uploads/                    # Temporary file storage
 ```
 
-## 🔄 Flow hoạt động
+## 🔄 Workflow
 
 ### 1. Upload file
 ```
-User upload file.txt 
-    → Đọc nội dung 
-    → Tách thành câu (sentence-level)
-    → Gán level (mỗi 5 câu = 1 level)
-    → Tạo embedding (OpenAI)
-    → Lưu vào Elasticsearch
+User uploads file.txt 
+    → Read content 
+    → Split into sentences (sentence-level)
+    → Assign levels (every 5 sentences = 1 level)
+    → Create embeddings (OpenAI)
+    → Store in Elasticsearch
 ```
 
-### 2. Ask question (Lần đầu)
+### 2. Ask question (First time)
 ```
-User hỏi câu hỏi
-    → Tạo embedding cho câu hỏi
-    → Vector search trong Elasticsearch
-    → Lấy 15 câu, deduplicate, group theo Level
-    → Tạo 3-4 biến thể câu hỏi
-    → Extract & giải nghĩa keywords
+User asks a question
+    → Create embedding for question
+    → Vector search in Elasticsearch
+    → Get 15 sentences, deduplicate, group by Level
+    → Create 3-4 question variants
+    → Extract & explain keywords
     → Build structured prompt
-    → Gọi LLM → Trả lời
-    → Trả về session_id để tiếp tục
+    → Call LLM → Get answer
+    → Return session_id for continuation
 ```
 
 ### 3. Tell me more (Continue)
 ```
-User bấm "Tell me more" với session_id
-    → Tăng level (đi sâu hơn)
-    → Lấy câu nguồn MỚI từ level sâu hơn
-    → Exclude các câu đã dùng
-    → Tạo biến thể câu hỏi MỚI (không lặp)
-    → Update keyword meaning
-    → Build prompt mới → Gọi LLM
-    → Trả lời mở rộng với thông tin mới
+User clicks "Tell me more" with session_id
+    → Increase level (go deeper)
+    → Get NEW source sentences from deeper levels
+    → Exclude previously used sentences
+    → Create NEW question variants (no repeats)
+    → Update keyword meanings
+    → Build new prompt → Call LLM
+    → Return expanded answer with new information
 ```
 
 ## 🛠 Setup
 
-### 1. Tạo virtualenv và cài dependencies
+### 1. Create virtualenv and install dependencies
 
 ```bash
 cd ai-vector-elastic-demo
@@ -80,11 +83,11 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 
 pip install -r requirements.txt
 
-# Download NLTK punkt (chạy 1 lần)
+# Download NLTK punkt (run once)
 python -m nltk.downloader punkt punkt_tab
 ```
 
-### 2. Chạy Elasticsearch bằng Docker (local)
+### 2. Run Elasticsearch with Docker (local)
 
 ```bash
 docker run -d --name es-demo \
@@ -94,170 +97,144 @@ docker run -d --name es-demo \
   docker.elastic.co/elasticsearch/elasticsearch:8.15.0
 ```
 
-### 3. Cấu hình `.env`
+### 3. Configure `.env`
 
-Tạo file `.env`:
+Create `.env` file:
 
 ```env
-OPENAI_API_KEY=sk-your-api-key-here
+OPENAI_API_KEY=sk-your-openai-api-key
 
 ES_HOST=http://localhost:9200
-ES_USERNAME=
-ES_PASSWORD=
 ES_INDEX_NAME=demo_documents
 
+# Optional
+ES_USERNAME=
+ES_PASSWORD=
+
 APP_PORT=8000
+
+EMBEDDING_MODEL=text-embedding-3-small
+CHAT_MODEL=gpt-4o-mini
 ```
 
-### 4. Chạy FastAPI
+### 4. Run the API server
 
 ```bash
+source venv/bin/activate
 uvicorn main:app --reload --port 8000
 ```
 
-## 📚 API Endpoints
+API documentation available at: http://localhost:8000/docs
+
+### 5. Run Streamlit UI (Web Interface)
+
+In a new terminal:
+
+```bash
+source venv/bin/activate
+streamlit run streamlit_app.py
+```
+
+Streamlit UI available at: http://localhost:8501
+
+## 🌐 Two Ways to Use
+
+### Option 1: Streamlit UI (Recommended for demo)
+- Visual web interface
+- Easy file upload
+- Interactive Q&A
+- View source sentences and details
+- URL: http://localhost:8501
+
+### Option 2: API + Postman/Swagger
+- REST API endpoints
+- Full control over parameters
+- Swagger docs at: http://localhost:8000/docs
+- Postman collection available
+
+## 📋 API Endpoints
 
 ### File Management
-
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/upload` | Upload file .txt mới |
-| POST | `/replace` | Thay thế toàn bộ data bằng file mới |
-| DELETE | `/documents` | Xóa tất cả documents |
-| GET | `/documents/count` | Đếm số documents & max level |
+| POST | `/upload` | Upload and index .txt file |
+| POST | `/replace` | Replace all data with new file |
+| DELETE | `/documents` | Delete all documents |
+| GET | `/documents/count` | Get document statistics |
 
 ### Q&A
-
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/ask` | Hỏi câu hỏi → nhận session_id |
-| POST | `/continue` | "Tell me more" - đào sâu level tiếp |
+| POST | `/ask` | Ask a question, get answer + session_id |
+| POST | `/continue` | Tell me more (use session_id) |
 
-### Info
-
+### System
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/` | Thông tin API |
+| GET | `/` | API information |
 | GET | `/health` | Health check |
 
-## 📝 API Usage Examples
+## 🔧 Request Examples
 
-### 1. Upload file
-
-```bash
-curl -X POST "http://localhost:8000/upload" \
-  -F "file=@school_rules.txt"
-```
-
-Response:
+### Ask a question
 ```json
+POST /ask
 {
-  "file_id": "abc-123",
-  "filename": "school_rules.txt",
-  "total_sentences": 220,
-  "max_level": 43,
-  "message": "File processed successfully. 220 sentences indexed across 44 levels."
+    "query": "What are the duties of a class teacher?",
+    "custom_prompt": "Answer in bullet points",
+    "limit": 15,
+    "buffer_percentage": 15
 }
 ```
 
-### 2. Ask question
-
-```bash
-curl -X POST "http://localhost:8000/ask" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What are the duties of a class teacher?"}'
-```
-
-Response:
+### Continue conversation
 ```json
+POST /continue
 {
-  "session_id": "uuid-here",
-  "answer": "The class teacher is responsible for...",
-  "question_variants": "1. What responsibilities...\n2. Can you explain...",
-  "keyword_meaning": "Class teacher refers to...",
-  "source_sentences": [
-    {"text": "The class teacher must...", "level": 0, "score": 1.85},
-    {"text": "Teachers are expected to...", "level": 1, "score": 1.72}
-  ],
-  "current_level": 1,
-  "max_level": 43,
-  "prompt_used": "[Full prompt here...]",
-  "can_continue": true
+    "session_id": "abc-123-def",
+    "custom_prompt": "Focus on specific examples",
+    "buffer_percentage": 15
 }
 ```
 
-### 3. Tell me more
+## ✅ Features
+
+### 7 Main Modules
+1. **File Upload** - Streaming upload to prevent RAM overflow
+2. **Sentence Embeddings** - OpenAI text-embedding-3-small
+3. **Query Processing** - Vector search with buffer support
+4. **Deduplication** - Remove duplicate sentences
+5. **Prompt Builder** - Structured prompts + custom instructions
+6. **Response Generation** - GPT-4o-mini for answers
+7. **Tell me more** - Session-based conversation continuation
+
+### Additional Features
+- ✅ Buffer 10-20% for better retrieval
+- ✅ Custom prompts support
+- ✅ Streaming file upload (1MB chunks)
+- ✅ Session management (30 min timeout)
+- ✅ Full Swagger documentation
+- ✅ Streamlit UI for easy demo
+
+## 🚀 Quick Start
 
 ```bash
-curl -X POST "http://localhost:8000/continue" \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": "uuid-from-ask-response"}'
+# 1. Start Elasticsearch
+docker start es-demo
+
+# 2. Start API server
+source venv/bin/activate
+uvicorn main:app --reload --port 8000
+
+# 3. Start Streamlit UI (new terminal)
+source venv/bin/activate
+streamlit run streamlit_app.py
+
+# 4. Open browser
+# - Streamlit: http://localhost:8501
+# - Swagger: http://localhost:8000/docs
 ```
 
-Response:
-```json
-{
-  "session_id": "uuid-here",
-  "answer": "Additionally, teachers should...",
-  "question_variants": "1. What else...\n2. Are there more details...",
-  "keyword_meaning": "Further aspects include...",
-  "source_sentences": [
-    {"text": "In addition to...", "level": 2, "score": 1.68}
-  ],
-  "current_level": 2,
-  "max_level": 43,
-  "prompt_used": "[Full prompt here...]",
-  "can_continue": true
-}
-```
+## 📝 License
 
-## ✅ Checklist theo yêu cầu khách
-
-### Module 1 - Upload & Quản lý file
-- [x] Upload file .txt
-- [x] Tách thành câu (sentence-level)
-- [x] Gán metadata (level, thứ tự)
-- [x] Thay thế file (POST /replace)
-- [x] Xóa file (DELETE /documents)
-
-### Module 2 - Embeddings & Elasticsearch
-- [x] Convert mỗi câu thành embedding (OpenAI)
-- [x] Lưu vào Elasticsearch với dense_vector
-- [x] Mapping: text, level, embedding
-
-### Module 3 - Xử lý câu hỏi
-- [x] Extract keywords + giải nghĩa
-- [x] Tìm câu nguồn theo level (Level 0 → Level N)
-- [x] Target 15-18 câu nguồn
-
-### Module 4 - Deduplicate
-- [x] Loại bỏ câu trùng lặp
-- [x] Giữ unique sentences
-
-### Module 5 - Build Prompt
-- [x] User Questions - 3-4 biến thể
-- [x] Extracted Keyword Meaning
-- [x] 15 Unique Source Sentences (group theo Level)
-- [x] Prompt Instructions
-
-### Module 6 - Sinh câu trả lời
-- [x] Gọi LLM với structured prompt
-- [x] Trả về answer + source_sentences + question_variants + prompt_used
-
-### Module 7 - "Tell me more"
-- [x] Đi sâu vào level tiếp theo
-- [x] Exclude câu đã dùng
-- [x] Tạo biến thể câu hỏi MỚI
-- [x] Update keyword meaning
-- [x] Build prompt mới → LLM trả lời mở rộng
-
-## 🚀 Deploy
-
-Khi lên server:
-1. Cài Elasticsearch server
-2. Chỉnh `.env` với credentials thật
-3. Deploy FastAPI (Docker, Railway, Render, etc.)
-
-## 📄 License
-
-MIT
+MIT License

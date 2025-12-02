@@ -1,10 +1,10 @@
 # services/prompt_builder.py
 """
-Prompt Builder Module - Xây dựng prompt có cấu trúc cho LLM
-Theo yêu cầu khách:
-- Question variations (3-4 biến thể)
+Prompt Builder Module - Build structured prompts for LLM
+As per client requirements:
+- Question variations (3-4 variants)
 - Keyword meaning
-- Source sentences (group theo level)
+- Source sentences (grouped by level)
 - Instructions
 """
 from typing import List, Dict, Optional
@@ -20,12 +20,12 @@ def generate_question_variants(
     continue_mode: bool = False
 ) -> str:
     """
-    Tạo 3–4 phiên bản câu hỏi khác nhau.
+    Generate 3-4 different versions of the question.
     
     Args:
-        user_query: Câu hỏi gốc
-        previous_variants: Các biến thể đã dùng trước đó (để tránh lặp)
-        continue_mode: Nếu True, tạo biến thể mới không lặp lại
+        user_query: Original question
+        previous_variants: Previously used variants (to avoid repetition)
+        continue_mode: If True, generate new variants without repeating
     """
     if continue_mode and previous_variants:
         previous_text = "\n".join(previous_variants)
@@ -56,12 +56,12 @@ def extract_keywords(
     continue_mode: bool = False
 ) -> str:
     """
-    Extract keywords / meaning mô tả.
+    Extract keywords and their meanings.
     
     Args:
-        user_query: Câu hỏi gốc
-        previous_keywords: Keywords đã giải thích trước đó
-        continue_mode: Nếu True, tìm keywords mới/sâu hơn
+        user_query: Original question
+        previous_keywords: Previously explained keywords
+        continue_mode: If True, find new/deeper keywords
     """
     if continue_mode and previous_keywords:
         previous_text = "\n".join(previous_keywords)
@@ -96,18 +96,18 @@ def build_final_prompt(
     custom_prompt: Optional[str] = None
 ) -> str:
     """
-    Build prompt đầy đủ theo cấu trúc yêu cầu.
+    Build full prompt according to required structure.
     
     Args:
-        user_query: Câu hỏi gốc
-        question_variants: Các biến thể câu hỏi
-        keyword_meaning: Giải nghĩa keywords
-        source_sentences: Danh sách câu nguồn (đã group theo level)
-        continue_mode: Đang ở chế độ "Tell me more"
-        continue_count: Số lần đã bấm Continue
-        custom_prompt: Custom instructions từ user (optional)
+        user_query: Original question
+        question_variants: Question variants
+        keyword_meaning: Keyword explanations
+        source_sentences: List of source sentences (grouped by level)
+        continue_mode: In "Tell me more" mode
+        continue_count: Number of times Continue was clicked
+        custom_prompt: Custom instructions from user (optional)
     """
-    # Build source sentences block, group theo level
+    # Build source sentences block, grouped by level
     src_lines = []
     current_level = None
     for s in source_sentences:
@@ -119,7 +119,7 @@ def build_final_prompt(
 
     src_block = "\n".join(src_lines)
     
-    # Instructions khác nhau cho lần đầu và continue
+    # Different instructions for first time vs continue
     if continue_mode:
         instructions = f"""
 Instructions:
@@ -165,7 +165,7 @@ Source sentences (grouped by level):
 
 
 def call_llm(prompt: str) -> str:
-    """Gọi LLM để sinh câu trả lời"""
+    """Call LLM to generate answer"""
     resp = client.chat.completions.create(
         model=settings.CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]

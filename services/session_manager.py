@@ -1,11 +1,11 @@
 # services/session_manager.py
 """
-Session Manager - Quản lý trạng thái conversation cho "Tell me more"
-Lưu trữ:
-- Câu hỏi gốc của user
-- Các câu nguồn đã sử dụng
-- Level hiện tại đang ở
-- Lịch sử các question variants đã dùng (để không lặp)
+Session Manager - Manage conversation state for "Tell me more"
+Stores:
+- User's original question
+- Used source sentences
+- Current level
+- History of used question variants (to avoid repetition)
 """
 import uuid
 from datetime import datetime, timedelta
@@ -15,23 +15,23 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ConversationSession:
-    """Lưu trạng thái của một conversation"""
+    """Store state of a conversation"""
     session_id: str
-    original_query: str  # Câu hỏi gốc của user
-    current_level: int = 0  # Level hiện tại (bắt đầu từ 0)
-    used_sentences: Set[str] = field(default_factory=set)  # Các câu đã dùng
-    used_variants: List[str] = field(default_factory=list)  # Các biến thể câu hỏi đã dùng
-    previous_keywords: List[str] = field(default_factory=list)  # Keywords đã giải nghĩa
+    original_query: str  # User's original question
+    current_level: int = 0  # Current level (starting from 0)
+    used_sentences: Set[str] = field(default_factory=set)  # Sentences already used
+    used_variants: List[str] = field(default_factory=list)  # Question variants already used
+    previous_keywords: List[str] = field(default_factory=list)  # Keywords already explained
     created_at: datetime = field(default_factory=datetime.now)
     last_accessed: datetime = field(default_factory=datetime.now)
-    max_level_available: int = 0  # Level cao nhất có sẵn trong data
-    continue_count: int = 0  # Số lần đã bấm "Tell me more"
+    max_level_available: int = 0  # Highest level available in data
+    continue_count: int = 0  # Number of times "Tell me more" was clicked
 
 
 class SessionManager:
     """
-    Quản lý sessions trong memory.
-    Production nên dùng Redis/DB.
+    Manage sessions in memory.
+    For production, use Redis/DB.
     """
     
     def __init__(self, session_timeout_minutes: int = 30):
@@ -39,7 +39,7 @@ class SessionManager:
         self._timeout = timedelta(minutes=session_timeout_minutes)
     
     def create_session(self, query: str, max_level: int = 0) -> ConversationSession:
-        """Tạo session mới khi user hỏi câu hỏi đầu tiên"""
+        """Create new session when user asks first question"""
         session_id = str(uuid.uuid4())
         session = ConversationSession(
             session_id=session_id,
@@ -51,10 +51,10 @@ class SessionManager:
         return session
     
     def get_session(self, session_id: str) -> Optional[ConversationSession]:
-        """Lấy session theo ID"""
+        """Get session by ID"""
         session = self._sessions.get(session_id)
         if session:
-            # Kiểm tra hết hạn
+            # Check if expired
             if datetime.now() - session.last_accessed > self._timeout:
                 del self._sessions[session_id]
                 return None
@@ -69,7 +69,7 @@ class SessionManager:
         keywords: str = None,
         increment_level: bool = False
     ):
-        """Cập nhật session sau mỗi lần trả lời"""
+        """Update session after each response"""
         session = self.get_session(session_id)
         if not session:
             return
@@ -88,28 +88,28 @@ class SessionManager:
             session.continue_count += 1
     
     def can_continue(self, session_id: str) -> bool:
-        """Kiểm tra xem có thể tiếp tục đào sâu không"""
+        """Check if can continue exploring deeper"""
         session = self.get_session(session_id)
         if not session:
             return False
         return session.current_level < session.max_level_available
     
     def delete_session(self, session_id: str):
-        """Xóa session"""
+        """Delete session"""
         if session_id in self._sessions:
             del self._sessions[session_id]
     
     def get_active_count(self) -> int:
-        """Đếm số sessions đang hoạt động"""
+        """Count active sessions"""
         self._cleanup_expired()
         return len(self._sessions)
     
     def clear_all(self):
-        """Xóa tất cả sessions"""
+        """Clear all sessions"""
         self._sessions.clear()
     
     def _cleanup_expired(self):
-        """Dọn dẹp các session hết hạn"""
+        """Clean up expired sessions"""
         now = datetime.now()
         expired = [
             sid for sid, sess in self._sessions.items()
