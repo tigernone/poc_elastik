@@ -17,7 +17,7 @@ INDEX = settings.ES_INDEX_NAME
 
 # Constants
 DEFAULT_SENTENCES_PER_LEVEL = 5
-MAX_BATCH_SIZE = 50  # Batch size for embedding to prevent RAM overflow
+MAX_BATCH_SIZE = 500  # Batch size for embedding (OpenAI supports up to 2048)
 
 
 def index_sentences_batch(
@@ -40,11 +40,16 @@ def index_sentences_batch(
     """
     max_level = 0
     total_sentences = len(sentences)
+    total_batches = (total_sentences + batch_size - 1) // batch_size
+    
+    print(f"[Indexer] Starting to index {total_sentences} sentences in {total_batches} batches (batch_size={batch_size})")
     
     # Xử lý từng batch
     for batch_start in range(0, total_sentences, batch_size):
         batch_end = min(batch_start + batch_size, total_sentences)
         batch_sentences = sentences[batch_start:batch_end]
+        batch_num = batch_start // batch_size + 1
+        print(f"[Indexer] Processing batch {batch_num}/{total_batches} ({batch_start+1}-{batch_end} of {total_sentences})")
         
         # Lấy embeddings cho cả batch (tối ưu hơn gọi từng câu)
         embeddings = get_embeddings_batch(batch_sentences)
@@ -114,7 +119,7 @@ def knn_search(
     exclude_texts: Set[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Tìm các câu gần nhất bằng cosineSimilarity.
+    Tìm các câu gần nhất bằng cosineSimilarity + phrase proximity boost.
     
     Args:
         query: Câu hỏi của user
@@ -152,8 +157,9 @@ def knn_search(
     else:
         inner_query = {"match_all": {}}
 
+    # Main query: Vector similarity + Phrase matching boost
     body = {
-        "size": top_k,
+        "size": top_k * 2,  # Lấy nhiều hơn để re-rank
         "query": {
             "script_score": {
                 "query": inner_query,
@@ -167,16 +173,123 @@ def knn_search(
 
     resp = es.search(index=INDEX, body=body)
 
+    # Collect results and calculate phrase proximity boost
     results = []
     for hit in resp["hits"]["hits"]:
         src = hit["_source"]
+        text = src["text"]
+        base_score = hit["_score"]
+        
+        # Calculate phrase proximity boost
+        phrase_boost = calculate_phrase_proximity_boost(query, text)
+        
+        # Final score = base_score * (1 + phrase_boost)
+        final_score = base_score * (1 + phrase_boost)
+        
         results.append({
-            "text": src["text"],
+            "text": text,
             "level": src.get("level", 0),
-            "score": hit["_score"],
-            "sentence_index": src.get("sentence_index", 0)
+            "score": final_score,
+            "sentence_index": src.get("sentence_index", 0),
+            "base_score": base_score,
+            "phrase_boost": phrase_boost
         })
-    return results
+    
+    # Re-rank by final score
+    results.sort(key=lambda x: -x["score"])
+    
+    # Return top_k
+    return results[:top_k]
+
+
+def calculate_phrase_proximity_boost(query: str, text: str) -> float:
+    """
+    Tính boost dựa trên độ gần nhau của các từ trong query.
+    
+    Nếu các từ xuất hiện gần nhau trong text thì boost cao hơn.
+    Ví dụ: query="heaven is" -> "heaven is" (liền kề) được boost cao nhất
+    
+    Returns: boost value (0.0 to 2.0)
+    """
+    import re
+    
+    query_lower = query.lower().strip()
+    text_lower = text.lower()
+    
+    # Split query into words (remove punctuation)
+    query_words = re.findall(r'\b\w+\b', query_lower)
+    
+    if len(query_words) <= 1:
+        # Single word query, no proximity boost needed
+        return 0.0
+    
+    # Check if exact phrase exists (with flexible whitespace/punctuation)
+    # Build regex pattern: word1\s+word2 or word1[^\w]+word2
+    pattern = r'\b' + r'\s+'.join(re.escape(w) for w in query_words) + r'\b'
+    if re.search(pattern, text_lower):
+        return 2.0  # Maximum boost for exact consecutive phrase
+    
+    # Tokenize text into words
+    text_words = re.findall(r'\b\w+\b', text_lower)
+    
+    # Find all positions of each query word in text
+    word_positions = {}
+    for query_word in query_words:
+        positions = []
+        for i, text_word in enumerate(text_words):
+            if text_word == query_word:  # Exact match only
+                positions.append(i)
+        if positions:
+            word_positions[query_word] = positions
+    
+    # If not all query words are found, no boost
+    if len(word_positions) < len(query_words):
+        return 0.0
+    
+    # Calculate minimum distance between consecutive query words in order
+    # Try all combinations of positions
+    from itertools import product
+    
+    position_combinations = [word_positions[w] for w in query_words]
+    min_avg_distance = float('inf')
+    
+    for combo in product(*position_combinations):
+        # combo is a tuple of positions for each query word
+        # Check if words appear in correct order
+        in_order = all(combo[i] < combo[i+1] for i in range(len(combo) - 1))
+        
+        if not in_order:
+            continue
+        
+        # Calculate total distance
+        total_distance = 0
+        for i in range(len(combo) - 1):
+            distance = combo[i+1] - combo[i] - 1  # -1 because consecutive = distance 0
+            total_distance += distance
+        
+        # Average distance per word pair
+        avg_distance = total_distance / (len(combo) - 1) if len(combo) > 1 else 0
+        min_avg_distance = min(min_avg_distance, avg_distance)
+    
+    if min_avg_distance == float('inf'):
+        return 0.0
+    
+    # Boost calculation: closer = higher boost
+    # Consecutive words (distance=0) get highest boost
+    if min_avg_distance == 0:
+        boost = 2.0  # Consecutive words
+    elif min_avg_distance <= 1:
+        boost = 1.5  # 1 word in between
+    elif min_avg_distance <= 2:
+        boost = 1.0  # 2 words in between
+    elif min_avg_distance <= 3:
+        boost = 0.6  # 3 words in between
+    elif min_avg_distance <= 5:
+        boost = 0.3  # 4-5 words in between
+    else:
+        boost = 0.1  # Far apart
+    
+    return boost
 
 
 def get_sentences_by_level(

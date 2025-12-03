@@ -14,7 +14,7 @@ API_BASE_URL = "http://localhost:8000"
 
 # Page configuration
 st.set_page_config(
-    page_title="AI Vector Search Demo",
+    page_title="AI Chat",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -69,12 +69,19 @@ def check_api_health():
         return None
 
 
-def upload_file(file):
-    """Upload a file to the API"""
+def upload_file(file, split_mode: str = "auto"):
+    """Upload a file to the API (timeout 30 minutes for large files)"""
     try:
         files = {"file": (file.name, file.getvalue(), "text/plain")}
-        response = requests.post(f"{API_BASE_URL}/upload", files=files)
+        # Timeout 30 phút cho file lớn (31k+ sentences)
+        response = requests.post(
+            f"{API_BASE_URL}/upload?split_mode={split_mode}", 
+            files=files,
+            timeout=1800  # 30 minutes
+        )
         return response.json(), response.status_code
+    except requests.exceptions.Timeout:
+        return {"detail": "Upload timed out after 30 minutes. File may be too large."}, 408
     except Exception as e:
         return {"detail": str(e)}, 500
 
@@ -91,10 +98,17 @@ def ask_question(query: str, custom_prompt: Optional[str] = None,
         if custom_prompt:
             payload["custom_prompt"] = custom_prompt
         
-        response = requests.post(f"{API_BASE_URL}/ask", json=payload)
-        return response.json(), response.status_code
+        response = requests.post(f"{API_BASE_URL}/ask", json=payload, timeout=600)
+        if response.status_code == 200:
+            return response.json(), response.status_code
+        else:
+            return {"detail": f"API Error: {response.status_code} - {response.text[:200]}"}, response.status_code
+    except requests.exceptions.Timeout:
+        return {"detail": "Request timed out. The response is taking too long. Please try with a shorter custom prompt."}, 408
+    except requests.exceptions.ConnectionError:
+        return {"detail": "Cannot connect to API. Make sure the server is running."}, 503
     except Exception as e:
-        return {"detail": str(e)}, 500
+        return {"detail": f"Error: {str(e)}"}, 500
 
 
 def continue_conversation(session_id: str, custom_prompt: Optional[str] = None,
@@ -109,10 +123,17 @@ def continue_conversation(session_id: str, custom_prompt: Optional[str] = None,
         if custom_prompt:
             payload["custom_prompt"] = custom_prompt
         
-        response = requests.post(f"{API_BASE_URL}/continue", json=payload)
-        return response.json(), response.status_code
+        response = requests.post(f"{API_BASE_URL}/continue", json=payload, timeout=600)
+        if response.status_code == 200:
+            return response.json(), response.status_code
+        else:
+            return {"detail": f"API Error: {response.status_code} - {response.text[:200]}"}, response.status_code
+    except requests.exceptions.Timeout:
+        return {"detail": "Request timed out. The response is taking too long."}, 408
+    except requests.exceptions.ConnectionError:
+        return {"detail": "Cannot connect to API. Make sure the server is running."}, 503
     except Exception as e:
-        return {"detail": str(e)}, 500
+        return {"detail": f"Error: {str(e)}"}, 500
 
 
 def get_document_stats():
@@ -144,7 +165,7 @@ if "can_continue" not in st.session_state:
 
 # Sidebar
 with st.sidebar:
-    st.title("🤖 AI Vector Search")
+    st.title("AI Chat")
     st.markdown("---")
     
     # Health check
@@ -162,9 +183,9 @@ with st.sidebar:
     # File Upload Section
     st.subheader("📁 Upload Document")
     uploaded_file = st.file_uploader(
-        "Choose a .txt file",
-        type=["txt"],
-        help="Upload a text file to index. Maximum 50MB."
+        "Choose a text file",
+        type=["txt", "text", "md", "csv", "log"],
+        help="Upload a text file to index. Supported: .txt, .text, .md, .csv, .log. Maximum 200MB."
     )
     
     col1, col2 = st.columns(2)
@@ -208,7 +229,7 @@ with st.sidebar:
 
 
 # Main content
-st.title("🤖 AI Vector Search Demo")
+st.title("🤖 AI Chat")
 st.markdown("Ask questions about your uploaded documents with multi-level retrieval.")
 
 # Check if documents are available
@@ -243,10 +264,22 @@ col1, col2, col3 = st.columns([1, 1, 2])
 with col1:
     ask_button = st.button("🔍 Ask Question", type="primary", use_container_width=True)
 with col2:
+    # Debug: show can_continue state
+    can_continue_now = st.session_state.get("can_continue", False)
+    # Calculate next level for button label
+    current_level = 1
+    if st.session_state.conversation_history:
+        last_result = st.session_state.conversation_history[-1].get("result", {})
+        current_level = last_result.get("current_level", 1)
+    next_level = current_level + 1
+    max_level = 20
+    
+    button_label = f"📚 Tell me more ({next_level}/{max_level})" if can_continue_now else "📚 Tell me more"
     continue_button = st.button(
-        "📚 Tell me more", 
-        disabled=not st.session_state.can_continue,
-        use_container_width=True
+        button_label, 
+        disabled=not can_continue_now,
+        use_container_width=True,
+        key="continue_btn"
     )
 with col3:
     if st.button("🔄 New Conversation", use_container_width=True):
@@ -255,26 +288,41 @@ with col3:
         st.session_state.can_continue = False
         st.rerun()
 
+# Show current state for debugging
+if st.session_state.session_id:
+    st.caption(f"🔑 Session: {st.session_state.session_id[:20]}... | Can continue: {st.session_state.can_continue}")
+
 # Handle Ask button
 if ask_button and user_question:
-    with st.spinner("🔍 Searching and generating answer..."):
-        result, status_code = ask_question(
-            query=user_question,
-            custom_prompt=custom_prompt if custom_prompt else None,
-            limit=limit,
-            buffer_percentage=buffer_percentage
-        )
-        
-        if status_code == 200:
-            st.session_state.session_id = result.get("session_id")
-            st.session_state.can_continue = result.get("can_continue", False)
-            st.session_state.conversation_history.append({
-                "type": "ask",
-                "question": user_question,
-                "result": result
-            })
-        else:
-            st.error(f"❌ Error: {result.get('detail', 'Unknown error')}")
+    # Show warning for long custom prompts
+    if custom_prompt and len(custom_prompt) > 500:
+        st.info("⏳ Long custom prompt detected. This may take 30-60 seconds to process...")
+    
+    with st.spinner("🔍 Searching and generating answer... Please wait, this may take a while for long prompts."):
+        try:
+            result, status_code = ask_question(
+                query=user_question,
+                custom_prompt=custom_prompt if custom_prompt else None,
+                limit=limit,
+                buffer_percentage=buffer_percentage
+            )
+            
+            if status_code == 200 and "answer" in result:
+                st.session_state.session_id = result.get("session_id")
+                st.session_state.can_continue = result.get("can_continue", False)
+                st.session_state.conversation_history.append({
+                    "type": "ask",
+                    "question": user_question,
+                    "result": result
+                })
+                st.rerun()
+            else:
+                error_msg = result.get('detail', 'Unknown error occurred')
+                st.error(f"❌ Error: {error_msg}")
+                st.session_state.can_continue = False
+        except Exception as e:
+            st.error(f"❌ Unexpected error: {str(e)}")
+            st.session_state.can_continue = False
 
 # Handle Continue button
 if continue_button and st.session_state.session_id:
@@ -292,8 +340,12 @@ if continue_button and st.session_state.session_id:
                 "type": "continue",
                 "result": result
             })
+            # Rerun to update button states
+            st.rerun()
         else:
             st.error(f"❌ Error: {result.get('detail', 'Unknown error')}")
+            st.session_state.can_continue = False
+            st.rerun()
 
 # Display conversation history
 if st.session_state.conversation_history:
@@ -313,40 +365,42 @@ if st.session_state.conversation_history:
         st.markdown("### 🤖 Answer")
         st.markdown(result.get("answer", "No answer available"))
         
-        # Expandable sections
-        with st.expander("📊 Details", expanded=False):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Current Level", result.get("current_level", 0))
-            with col2:
-                st.metric("Max Level", result.get("max_level", 0))
-            with col3:
-                st.metric("Sentences Retrieved", result.get("sentences_retrieved", 0))
-            
-            st.markdown("**Question Variants:**")
-            st.text(result.get("question_variants", "N/A"))
-            
-            st.markdown("**Keyword Meaning:**")
-            st.text(result.get("keyword_meaning", "N/A"))
+        # === ALWAYS VISIBLE: Details ===
+        st.markdown("### 📊 Details")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Current Level", result.get("current_level", 0))
+        with col2:
+            st.metric("Max Level", result.get("max_level", 0))
+        with col3:
+            st.metric("Sentences Retrieved", result.get("sentences_retrieved", 0))
         
-        with st.expander("📄 Source Sentences", expanded=False):
-            sources = result.get("source_sentences", [])
-            if sources:
-                for src in sources:
-                    level = src.get("level", 0)
-                    score = src.get("score", 0)
-                    text = src.get("text", "")
-                    st.markdown(f"""
-                    <div class="source-sentence">
-                        <strong>Level {level}</strong> (Score: {score:.2f})<br>
-                        {text}
-                    </div>
-                    """, unsafe_allow_html=True)
-            else:
-                st.info("No source sentences available")
+        st.markdown("**Question Variants:**")
+        st.text(result.get("question_variants", "N/A"))
         
-        with st.expander("🔧 Debug: Full Prompt", expanded=False):
-            st.code(result.get("prompt_used", "N/A"), language="text")
+        st.markdown("**Keyword Meaning:**")
+        st.text(result.get("keyword_meaning", "N/A"))
+        
+        # === ALWAYS VISIBLE: Source Sentences ===
+        st.markdown("### 📄 Source Sentences")
+        sources = result.get("source_sentences", [])
+        if sources:
+            for src in sources:
+                level = src.get("level", 0)
+                score = src.get("score", 0)
+                text = src.get("text", "")
+                st.markdown(f"""
+                <div class="source-sentence">
+                    <strong>Level {level}</strong> (Score: {score:.2f})<br>
+                    {text}
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No source sentences available")
+        
+        # === ALWAYS VISIBLE: Full Prompt ===
+        st.markdown("### 🔧 Full Prompt Sent to LLM")
+        st.code(result.get("prompt_used", "N/A"), language="text")
         
         st.markdown("---")
     
@@ -361,7 +415,7 @@ if st.session_state.conversation_history:
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #666; font-size: 0.9rem;">
-    AI Vector Search Demo | Powered by Elasticsearch + OpenAI | 
+    AI Chat | Powered by Elasticsearch + OpenAI | 
     <a href="http://localhost:8000/docs" target="_blank">API Docs</a>
 </div>
 """, unsafe_allow_html=True)

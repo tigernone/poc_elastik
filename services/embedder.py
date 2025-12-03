@@ -1,32 +1,34 @@
 # services/embedder.py
 """
-Embedder Module - OpenAI embeddings
-Hỗ trợ:
-- Single text embedding
-- Batch embedding (tối ưu cho nhiều text)
+Embedder Module - OpenAI Embeddings API
+Sử dụng EMBEDDING_API_KEY để gọi OpenAI embedding API
 """
 from typing import List
 from openai import OpenAI
 from config import settings
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+# Initialize OpenAI client with EMBEDDING_API_KEY
+print("Initializing OpenAI Embedding client...")
+client = OpenAI(api_key=settings.EMBEDDING_API_KEY)
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL  # text-embedding-3-small
+print(f"OpenAI Embedding ready! Model: {EMBEDDING_MODEL}")
 
 
 def get_embedding(text: str) -> List[float]:
     """
-    Lấy embedding cho một text.
+    Lấy embedding cho một text sử dụng OpenAI API.
     """
-    resp = client.embeddings.create(
-        model=settings.EMBEDDING_MODEL,
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
         input=text
     )
-    return resp.data[0].embedding
+    return response.data[0].embedding
 
 
 def get_embeddings_batch(texts: List[str]) -> List[List[float]]:
     """
     Lấy embeddings cho nhiều texts cùng lúc.
-    Hiệu quả hơn gọi từng text một.
+    OpenAI API hỗ trợ batch embedding.
     
     Args:
         texts: Danh sách các text cần embedding
@@ -37,15 +39,12 @@ def get_embeddings_batch(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
     
-    # OpenAI API hỗ trợ batch embedding
-    resp = client.embeddings.create(
-        model=settings.EMBEDDING_MODEL,
+    # OpenAI supports batch embedding
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
         input=texts
     )
     
-    # Sắp xếp theo index để đảm bảo thứ tự đúng
-    embeddings = [None] * len(texts)
-    for item in resp.data:
-        embeddings[item.index] = item.embedding
-    
-    return embeddings
+    # Sort by index to maintain order
+    sorted_data = sorted(response.data, key=lambda x: x.index)
+    return [item.embedding for item in sorted_data]

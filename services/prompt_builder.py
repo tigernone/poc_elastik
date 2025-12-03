@@ -11,7 +11,14 @@ from typing import List, Dict, Optional
 from openai import OpenAI
 from config import settings
 
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
+# Chat client (DeepSeek or OpenAI)
+if settings.OPENAI_BASE_URL:
+    chat_client = OpenAI(
+        api_key=settings.OPENAI_API_KEY,
+        base_url=settings.OPENAI_BASE_URL
+    )
+else:
+    chat_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
 def generate_question_variants(
@@ -43,7 +50,7 @@ def generate_question_variants(
             f"{user_query}"
         )
     
-    resp = client.chat.completions.create(
+    resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -79,7 +86,7 @@ def extract_keywords(
             f"{user_query}"
         )
     
-    resp = client.chat.completions.create(
+    resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )
@@ -166,7 +173,7 @@ Source sentences (grouped by level):
 
 def call_llm(prompt: str) -> str:
     """Call LLM to generate answer"""
-    resp = client.chat.completions.create(
+    resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
         messages=[{"role": "user", "content": prompt}]
     )

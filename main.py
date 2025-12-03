@@ -3,9 +3,13 @@
 AI Vector Search Demo (Elasticsearch)
 =====================================
 Full-featured Q&A system with:
-- Multi-level retrieval (Level 0, 1, 2...)
+- Multi-level retrieval (Level 0 → 1 → 2 → 3)
+  - Level 0: Keyword combinations
+  - Level 1: Single keywords
+  - Level 2: Synonyms
+  - Level 3: Keyword + Magical words
 - Structured prompt builder with custom prompts
-- "Tell me more" functionality
+- "Tell me more" functionality with progressive exploration
 - File management (upload with streaming, replace, delete)
 - Buffer 10-20% for better retrieval
 """
@@ -36,6 +40,8 @@ from services.prompt_builder import (
     call_llm,
 )
 from services.session_manager import session_manager
+from services.keyword_extractor import extract_keywords as extract_clean_keywords
+from services.multi_level_retriever import get_next_batch
 from models.request_models import (
     AskRequest, 
     AskResponse, 
@@ -112,7 +118,11 @@ app.add_middleware(
 # Initialize index on app startup
 @app.on_event("startup")
 def startup_event():
-    init_index()
+    try:
+        init_index()
+    except Exception as e:
+        print(f"Warning: Could not initialize Elasticsearch index: {e}")
+        print("Server will continue without Elasticsearch connection.")
 
 
 # ============================================================
@@ -169,44 +179,118 @@ CHUNK_SIZE = 1024 * 1024  # 1MB chunks for streaming
 async def upload_file(
     file: UploadFile = File(
         ..., 
-        description="The .txt file to upload. Recommended max size: 10MB"
+        description="The .txt file to upload. Recommended max size: 200MB"
+    ),
+    split_mode: str = Query(
+        default="auto",
+        description="How to split text: 'auto' (detect), 'line' (per-line for Bible/verses), 'nltk' (paragraphs)",
+        enum=["auto", "line", "nltk"]
     )
 ):
     """
     Upload .txt file with streaming read for RAM optimization.
+    
+    **split_mode options:**
+    - `auto`: Auto-detect based on file structure
+    - `line`: Split by newlines (for Bible, verse-per-line files) 
+    - `nltk`: Use NLTK sentence tokenizer (for paragraph-style text)
+    
+    **Supported encodings:** UTF-8, UTF-16, Latin-1, CP1252 (Windows)
     """
-    if not file.filename.endswith(".txt"):
-        raise HTTPException(
-            status_code=400, 
-            detail="Only .txt files are supported. Please convert your document to .txt format."
-        )
+    # Allow any text file extension
+    allowed_extensions = [".txt", ".text", ".md", ".csv", ".log", ".dat"]
+    file_ext = "." + file.filename.split(".")[-1].lower() if "." in file.filename else ""
+    
+    if file_ext and file_ext not in allowed_extensions:
+        # Just warn, don't block - try to process anyway
+        print(f"[Upload] Warning: Unusual file extension '{file_ext}', will try to process as text")
 
     # Streaming read to prevent RAM overflow with large files
     chunks = []
     total_size = 0
-    MAX_SIZE = 50 * 1024 * 1024  # 50MB limit
+    MAX_SIZE = 200 * 1024 * 1024  # 200MB limit
     
-    while True:
-        chunk = await file.read(CHUNK_SIZE)
-        if not chunk:
-            break
-        chunks.append(chunk)
-        total_size += len(chunk)
-        
-        if total_size > MAX_SIZE:
-            raise HTTPException(
-                status_code=400,
-                detail=f"File too large. Maximum size is 50MB. Your file: {total_size / (1024*1024):.1f}MB"
-            )
+    try:
+        while True:
+            chunk = await file.read(CHUNK_SIZE)
+            if not chunk:
+                break
+            chunks.append(chunk)
+            total_size += len(chunk)
+            
+            if total_size > MAX_SIZE:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large. Maximum size is 200MB. Your file: {total_size / (1024*1024):.1f}MB"
+                )
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error reading file: {str(e)}"
+        )
+    
+    if not chunks:
+        raise HTTPException(
+            status_code=400,
+            detail="File is empty or could not be read."
+        )
     
     content_bytes = b"".join(chunks)
     
+    # Try multiple encodings - cp1252 first for Windows files with smart quotes
+    text = None
+    best_encoding = None
+    
+    # First try strict UTF-8
     try:
         text = content_bytes.decode("utf-8")
+        # Validate: check if result has mostly printable chars
+        printable_ratio = sum(1 for c in text[:1000] if c.isprintable() or c in '\n\r\t') / min(len(text), 1000)
+        if printable_ratio > 0.95:
+            best_encoding = "utf-8"
+            print(f"[Upload] Successfully decoded with UTF-8 (printable ratio: {printable_ratio:.2%})")
+        else:
+            text = None  # Reset, try other encodings
     except UnicodeDecodeError:
-        text = content_bytes.decode("latin-1")
-
-    sentences = split_into_sentences(text)
+        pass
+    
+    # If UTF-8 failed or gave bad results, try Windows encodings
+    if text is None:
+        for encoding in ["cp1252", "utf-8-sig", "utf-16", "iso-8859-1", "latin-1"]:
+            try:
+                candidate = content_bytes.decode(encoding)
+                # Validate result
+                printable_ratio = sum(1 for c in candidate[:1000] if c.isprintable() or c in '\n\r\t') / min(len(candidate), 1000)
+                if printable_ratio > 0.90:
+                    text = candidate
+                    best_encoding = encoding
+                    print(f"[Upload] Successfully decoded with {encoding} (printable ratio: {printable_ratio:.2%})")
+                    break
+            except (UnicodeDecodeError, LookupError):
+                continue
+    
+    if text is None:
+        # Last resort: decode with errors='replace' to replace bad chars with ?
+        text = content_bytes.decode("utf-8", errors="replace")
+        print(f"[Upload] Warning: Used fallback decoding with character replacement")
+    
+    # Clean up text: remove null bytes, normalize line endings
+    text = text.replace("\x00", "")  # Remove null bytes
+    text = text.replace("\r\n", "\n").replace("\r", "\n")  # Normalize line endings
+    
+    # Remove BOM if present
+    if text.startswith("\ufeff"):
+        text = text[1:]
+    
+    try:
+        sentences = split_into_sentences(text, split_mode=split_mode)
+        print(f"[Upload] Split mode: {split_mode}, Total sentences: {len(sentences)}")
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error splitting text into sentences: {str(e)}"
+        )
+    
     if not sentences:
         raise HTTPException(
             status_code=400, 
@@ -214,8 +298,14 @@ async def upload_file(
         )
 
     # Index sentences with batch processing
-    file_id = str(uuid.uuid4())
-    max_level = index_sentences_batch(sentences, file_id=file_id, batch_size=20)
+    try:
+        file_id = str(uuid.uuid4())
+        max_level = index_sentences_batch(sentences, file_id=file_id, batch_size=500)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error indexing sentences: {str(e)}"
+        )
 
     return UploadResponse(
         file_id=file_id,
@@ -370,7 +460,12 @@ async def get_count():
 )
 async def ask(req: AskRequest):
     """
-    Receive user question and execute full flow with buffer support.
+    Receive user question and execute full flow with MULTI-LEVEL retrieval.
+    
+    Level 0: Keyword combinations (most specific → least specific)
+    Level 1: Single keyword search
+    Level 2: Synonym-based search
+    Level 3: Keyword + Magical words combinations
     """
     # Check if data exists
     if get_document_count() == 0:
@@ -379,23 +474,80 @@ async def ask(req: AskRequest):
             detail="No documents found. Please upload a file first using POST /upload"
         )
     
-    # 1. Get source sentences from Elasticsearch with buffer support
-    source_sentences = get_top_unique_sentences_grouped(
-        req.query, 
-        limit=req.limit,
-        buffer_percentage=req.buffer_percentage
+    # Step 1: Extract clean keywords (filtered from magic words)
+    clean_keywords = extract_clean_keywords(req.query)
+    
+    print(f"[DEBUG] Query: '{req.query}' → Keywords extracted: {clean_keywords}")
+    
+    if not clean_keywords:
+        # Fallback: use simple word extraction
+        clean_keywords = [w for w in req.query.lower().split() if len(w) > 3][:5]
+        print(f"[DEBUG] Fallback keywords: {clean_keywords}")
+    
+    # Step 2: Get first batch of sentences using multi-level retrieval
+    # Count meaningful words in original query (excluding stopwords and question words)
+    stopwords = {'what', 'where', 'when', 'who', 'why', 'how', 'which', 'whom', 'whose',
+                 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+                 'the', 'a', 'an', 'and', 'or', 'but', 'if', 'so', 'as',
+                 'to', 'of', 'in', 'on', 'at', 'by', 'for', 'with', 'about',
+                 'do', 'does', 'did', 'can', 'could', 'will', 'would', 'should', 'may', 'might',
+                 'this', 'that', 'these', 'those', 'it', 'its'}
+    
+    # Extract meaningful nouns from query
+    query_words = [w.lower().strip('?!.,;:') for w in req.query.split()]
+    meaningful_query_words = [w for w in query_words if w not in stopwords and len(w) > 2]
+    
+    print(f"[DEBUG] Meaningful words in query: {meaningful_query_words}")
+    
+    # If query has only 1 meaningful word → start from Level 1 (keyword + magical words)
+    # NEW LOGIC: Level 1 = keyword + magic words (e.g., "heaven is")
+    if len(meaningful_query_words) <= 1:
+        # Single keyword query → start at Level 1 for contextual search
+        initial_state = {
+            "current_level": 1,  # Changed from 3 to 1
+            "level_offsets": {"0": 0, "1": 0, "2": [0, 0], "3": 0},
+            "used_sentence_ids": []
+        }
+        print(f"[INFO] Only 1 meaningful word found → Starting from Level 1 (keyword + magic words)")
+    else:
+        initial_state = {
+            "current_level": 0,
+            "level_offsets": {"0": 0, "1": 0, "2": [0, 0], "3": 0},
+            "used_sentence_ids": []
+        }
+    
+    source_sentences, updated_state, level_used = get_next_batch(
+        session_state=initial_state,
+        keywords=clean_keywords,
+        batch_size=req.limit if req.limit else 15
     )
+    
+    if not source_sentences:
+        # Fallback to old method if multi-level returns nothing
+        source_sentences = get_top_unique_sentences_grouped(
+            req.query, 
+            limit=req.limit,
+            buffer_percentage=req.buffer_percentage
+        )
+    
     if not source_sentences:
         raise HTTPException(
             status_code=404, 
             detail="No source sentences found matching your query. Try rephrasing your question."
         )
 
-    # 2. Generate question variants + extract keywords
+    # Step 3: Generate question variants + extract keyword meaning
     question_variants = generate_question_variants(req.query)
-    keyword_meaning = extract_keywords(req.query)
+    
+    # Use pre-provided keyword_meaning if available, otherwise generate via LLM
+    if req.keyword_meaning:
+        keyword_meaning = req.keyword_meaning
+        print(f"[INFO] Using pre-provided keyword_meaning")
+    else:
+        keyword_meaning = extract_keywords(req.query)
+        print(f"[INFO] Generated keyword_meaning via LLM")
 
-    # 3. Build final prompt with custom_prompt support
+    # Step 4: Build final prompt with custom_prompt support
     prompt = build_final_prompt(
         user_query=req.query,
         question_variants=question_variants,
@@ -405,27 +557,30 @@ async def ask(req: AskRequest):
         custom_prompt=req.custom_prompt
     )
 
-    # 4. Call LLM
+    # Step 5: Call LLM
     answer = call_llm(prompt)
     
-    # 5. Create session to track conversation
-    max_level = get_max_level()
-    session = session_manager.create_session(req.query, max_level)
-    
-    # Update session with used sentences
-    used_texts = [s["text"] for s in source_sentences]
-    session_manager.update_session(
-        session.session_id,
-        used_sentences=used_texts,
-        question_variants=question_variants,
-        keywords=keyword_meaning
+    # Step 6: Create session with keywords and level tracking
+    session = session_manager.create_session(
+        query=req.query, 
+        max_level=20,  # 21 levels: 0-20 for deep testing
+        keywords=clean_keywords
     )
     
-    # Calculate current_level from source sentences
-    current_level = max(s["level"] for s in source_sentences) if source_sentences else 0
+    # Update session with state from retriever
+    session_manager.update_session(
+        session.session_id,
+        used_sentences=[s["text"] for s in source_sentences],
+        question_variants=question_variants,
+        keywords=keyword_meaning,
+        state_dict=updated_state
+    )
     
-    # Calculate buffer applied
-    buffer_applied = req.buffer_percentage if req.buffer_percentage else 0
+    # Calculate current_level from state
+    current_level = updated_state.get("current_level", 0)
+    
+    # can_continue = True if current_level < 20 (still have levels to explore)
+    can_continue = current_level <= 20
 
     return AskResponse(
         session_id=session.session_id,
@@ -433,12 +588,12 @@ async def ask(req: AskRequest):
         question_variants=question_variants,
         keyword_meaning=keyword_meaning,
         source_sentences=source_sentences,
-        current_level=current_level,
-        max_level=max_level,
+        current_level=level_used,
+        max_level=20,
         prompt_used=prompt,
-        can_continue=current_level < max_level,
+        can_continue=can_continue,
         sentences_retrieved=len(source_sentences),
-        buffer_applied=buffer_applied
+        buffer_applied=req.buffer_percentage if req.buffer_percentage else 0
     )
 
 
@@ -487,7 +642,12 @@ async def ask(req: AskRequest):
 )
 async def continue_conversation(req: ContinueRequest):
     """
-    "Tell me more" - Explore deeper levels with buffer support.
+    "Tell me more" - Progressive exploration using multi-level retrieval.
+    
+    Automatically moves through levels:
+    Level 0 → Level 1 → Level 2 → Level 3
+    
+    Each call fetches next batch of sentences, avoiding previously used ones.
     """
     # Get session
     session = session_manager.get_session(req.session_id)
@@ -497,46 +657,57 @@ async def continue_conversation(req: ContinueRequest):
             detail="Session not found or expired (30 min timeout). Please ask a new question with POST /ask"
         )
     
-    # Check if can continue
-    if session.current_level >= session.max_level_available:
+    # Check if can continue (level 0-3)
+    if session.current_level > 3:
         raise HTTPException(
             status_code=400,
             detail="No more levels available. All information has been explored. Start a new question with POST /ask"
         )
     
-    # Increase level
-    next_level = session.current_level + 1
+    # Get session state for retriever
+    session_state = session.get_state_dict()
     
-    # Get source sentences from new level (exclude used ones) with buffer
-    source_sentences = get_sentences_by_level(
-        query=session.original_query,
-        start_level=next_level,
-        limit=req.limit if req.limit else 15,
-        exclude_texts=session.used_sentences,
-        buffer_percentage=req.buffer_percentage
+    # Use stored keywords from session
+    keywords = session.keywords if session.keywords else [w for w in session.original_query.lower().split() if len(w) > 3][:5]
+    
+    # Get next batch using multi-level retriever
+    source_sentences, updated_state, level_used = get_next_batch(
+        session_state=session_state,
+        keywords=keywords,
+        batch_size=req.limit if req.limit else 15
     )
     
+    # If no more sentences, return response with can_continue=False
     if not source_sentences:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No new sentences found at Level {next_level}. Try asking a different question."
+        return ContinueResponse(
+            session_id=session.session_id,
+            answer="All available information has been explored. Please start a new conversation with a different question.",
+            question_variants=[],
+            keyword_meaning="All keywords have been fully explored.",
+            source_sentences=[],
+            current_level=updated_state.get("current_level", 21),
+            max_level=20,
+            prompt_used="",
+            can_continue=False,
+            sentences_retrieved=0,
+            buffer_applied=0
         )
     
-    # Generate NEW question variants (don't repeat previous ones)
+    # Generate NEW question variants (deeper exploration)
     question_variants = generate_question_variants(
         session.original_query,
         previous_variants=session.used_variants,
         continue_mode=True
     )
     
-    # Update keyword meaning (find new/deeper keywords)
+    # Generate deeper keyword meaning
     keyword_meaning = extract_keywords(
         session.original_query,
         previous_keywords=session.previous_keywords,
         continue_mode=True
     )
     
-    # Build new prompt with custom_prompt support
+    # Build new prompt for deeper exploration
     prompt = build_final_prompt(
         user_query=session.original_query,
         question_variants=question_variants,
@@ -550,19 +721,21 @@ async def continue_conversation(req: ContinueRequest):
     # Call LLM
     answer = call_llm(prompt)
     
-    # Update session
-    used_texts = [s["text"] for s in source_sentences]
+    # Update session with new state
     session_manager.update_session(
         session.session_id,
-        used_sentences=used_texts,
+        used_sentences=[s["text"] for s in source_sentences],
         question_variants=question_variants,
         keywords=keyword_meaning,
-        increment_level=True
+        increment_level=True,
+        state_dict=updated_state
     )
     
-    # Calculate current_level and buffer info
-    current_level = max(s["level"] for s in source_sentences) if source_sentences else next_level
-    buffer_applied = req.buffer_percentage if req.buffer_percentage else 0
+    # Get current level from updated state
+    current_level = updated_state.get("current_level", level_used)
+    
+    # can_continue = True if there are still levels to explore
+    can_continue = current_level <= 20
     
     return ContinueResponse(
         session_id=session.session_id,
@@ -570,13 +743,13 @@ async def continue_conversation(req: ContinueRequest):
         question_variants=question_variants,
         keyword_meaning=keyword_meaning,
         source_sentences=source_sentences,
-        current_level=current_level,
-        max_level=session.max_level_available,
+        current_level=level_used,
+        max_level=20,
         prompt_used=prompt,
-        can_continue=current_level < session.max_level_available,
+        can_continue=can_continue,
         continue_count=session.continue_count + 1,
         sentences_retrieved=len(source_sentences),
-        buffer_applied=buffer_applied
+        buffer_applied=req.buffer_percentage if req.buffer_percentage else 0
     )
 
 
@@ -674,3 +847,157 @@ async def health():
         ready=doc_count > 0,
         message="Upload a file with POST /upload to get started" if doc_count == 0 else "System ready for queries"
     )
+
+
+# ============================================================
+# DEBUG ENDPOINTS (for testing)
+# ============================================================
+
+@app.get(
+    "/debug/keywords",
+    tags=["🔧 Debug"],
+    summary="Debug: Extract and analyze keywords",
+    description="Extract keywords from query and show filtering details"
+)
+async def debug_keywords(query: str):
+    """Debug endpoint to see keyword extraction details."""
+    from services.keyword_extractor import (
+        extract_keywords_raw,
+        filter_magic_words,
+        extract_keywords,
+        generate_keyword_combinations,
+        generate_synonyms,
+        generate_keyword_magical_pairs,
+        MAGIC_WORDS
+    )
+    
+    raw = extract_keywords_raw(query)
+    filtered = filter_magic_words(raw)
+    final = extract_keywords(query)
+    combinations = generate_keyword_combinations(final)
+    
+    # Get synonyms for each keyword
+    synonyms = {}
+    for kw in final[:3]:  # Limit to avoid too many API calls
+        synonyms[kw] = generate_synonyms(kw)
+    
+    # Get magical pairs
+    magical_pairs = generate_keyword_magical_pairs(final[:2])[:10]  # Limit
+    
+    return {
+        "query": query,
+        "raw_keywords": raw,
+        "filtered_keywords": filtered,
+        "final_keywords": final,
+        "magic_words_count": len(MAGIC_WORDS),
+        "combinations": [list(c) for c in combinations[:10]],
+        "synonyms": synonyms,
+        "magical_pairs": [list(p) for p in magical_pairs],
+    }
+
+
+@app.get(
+    "/debug/level/{level}",
+    tags=["🔧 Debug"],
+    summary="Debug: Test specific level retrieval",
+    description="Fetch sentences from a specific level only"
+)
+async def debug_level(
+    level: int,
+    query: str,
+    limit: int = 10
+):
+    """Debug endpoint to test each level independently."""
+    from services.keyword_extractor import extract_keywords
+    from services.multi_level_retriever import MultiLevelRetriever
+    
+    keywords = extract_keywords(query)
+    if not keywords:
+        keywords = [w for w in query.lower().split() if len(w) > 3][:5]
+    
+    retriever = MultiLevelRetriever(keywords)
+    used_texts = set()
+    
+    if level == 0:
+        sentences, offset, exhausted = retriever.fetch_level0_sentences(
+            offset=0, limit=limit, used_texts=used_texts
+        )
+        return {
+            "level": 0,
+            "strategy": "keyword_combinations",
+            "keywords": keywords,
+            "sentences": sentences,
+            "offset": offset,
+            "exhausted": exhausted
+        }
+    
+    elif level == 1:
+        sentences, offset, exhausted = retriever.fetch_level1_sentences(
+            offset=0, limit=limit, used_texts=used_texts
+        )
+        return {
+            "level": 1,
+            "strategy": "single_keywords",
+            "keywords": keywords,
+            "sentences": sentences,
+            "offset": offset,
+            "exhausted": exhausted
+        }
+    
+    elif level == 2:
+        sentences, k_off, s_off, exhausted = retriever.fetch_level2_sentences(
+            keyword_offset=0, synonym_offset=0, limit=limit, used_texts=used_texts
+        )
+        return {
+            "level": 2,
+            "strategy": "synonyms",
+            "keywords": keywords,
+            "sentences": sentences,
+            "keyword_offset": k_off,
+            "synonym_offset": s_off,
+            "exhausted": exhausted
+        }
+    
+    elif level == 3:
+        sentences, offset, exhausted = retriever.fetch_level3_sentences(
+            offset=0, limit=limit, used_texts=used_texts
+        )
+        return {
+            "level": 3,
+            "strategy": "keyword_magical_pairs",
+            "keywords": keywords,
+            "sentences": sentences,
+            "offset": offset,
+            "exhausted": exhausted
+        }
+    
+    else:
+        return {"error": f"Invalid level {level}. Valid: 0, 1, 2, 3"}
+
+
+@app.get(
+    "/debug/session/{session_id}",
+    tags=["🔧 Debug"],
+    summary="Debug: View session state",
+    description="View current session state including level offsets and used sentences"
+)
+async def debug_session(session_id: str):
+    """Debug endpoint to inspect session state."""
+    session = session_manager.get_session(session_id)
+    
+    if not session:
+        return {"error": "Session not found or expired"}
+    
+    return {
+        "session_id": session.session_id,
+        "original_query": session.original_query,
+        "current_level": session.current_level,
+        "max_level_available": session.max_level_available,
+        "level_offsets": session.level_offsets,
+        "keywords": session.keywords,
+        "used_sentences_count": len(session.used_sentences),
+        "used_variants_count": len(session.used_variants),
+        "continue_count": session.continue_count,
+        "created_at": session.created_at.isoformat(),
+        "last_accessed": session.last_accessed.isoformat()
+    }

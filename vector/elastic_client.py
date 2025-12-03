@@ -37,7 +37,7 @@ def init_index():
                 "level": {"type": "integer"},
                 "embedding": {
                     "type": "dense_vector",
-                    "dims": 1536  # embedding size của text-embedding-3-small
+                    "dims": 1536  # embedding size của OpenAI text-embedding-3-small
                 }
             }
         }

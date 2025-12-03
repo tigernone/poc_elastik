@@ -1,0 +1,115 @@
+/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/urllib3/__init__.py:35: NotOpenSSLWarning: urllib3 v2 only supports OpenSSL 1.1.1+, currently the 'ssl' module is compiled with 'LibreSSL 2.8.3'. See: https://github.com/urllib3/urllib3/issues/3020
+  warnings.warn(
+INFO:     Started server process [51117]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:58164 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58167 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58179 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58184 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58186 - "POST /upload HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58192 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58252 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58254 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58256 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58258 - "POST /ask HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58274 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58277 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58318 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58321 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58323 - "POST /continue HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58398 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58401 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58416 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58419 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58421 - "POST /continue HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/uvicorn/protocols/http/httptools_impl.py", line 409, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/applications.py", line 1139, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/applications.py", line 113, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/middleware/cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 125, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 111, in app
+    response = await f(request)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 391, in app
+    raw_response = await run_endpoint_function(
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/fastapi/routing.py", line 290, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/main.py", line 563, in continue_conversation
+    return ContinueResponse(
+  File "/Users/minknguyen/Desktop/Working/POC/ai-vector-elastic-demo/venv/lib/python3.9/site-packages/pydantic/main.py", line 250, in __init__
+    validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+pydantic_core._pydantic_core.ValidationError: 2 validation errors for ContinueResponse
+question_variants
+  Input should be a valid string [type=string_type, input_value=[], input_type=list]
+    For further information visit https://errors.pydantic.dev/2.12/v/string_type
+continue_count
+  Field required [type=missing, input_value={'session_id': '58ff924a-... 0, 'buffer_applied': 0}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+INFO:     127.0.0.1:58445 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58447 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58615 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58617 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58733 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58735 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58779 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58781 - "DELETE /documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58783 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58790 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58792 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59010 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59012 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59014 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59016 - "POST /upload HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:59018 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59027 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59029 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59042 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59044 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59047 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59049 - "POST /upload HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:59051 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59102 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59104 - "DELETE /documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59106 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59111 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59113 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59115 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59117 - "POST /upload HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:59119 - "GET /documents/count HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [51117]

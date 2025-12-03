@@ -1,0 +1,53 @@
+Grace and Freedom Test Corpus
+==============================
+
+This file is designed for testing multi-level retrieval system.
+Each section targets specific retrieval levels.
+
+=== SECTION 1: KEYWORD COMBINATIONS (Level 0 targets) ===
+
+Grace unlocks true freedom in Christ.
+When grace unlocks your heart, you experience freedom.
+Divine grace unlocks the door to spiritual freedom.
+Through grace, freedom becomes possible for all believers.
+Grace and freedom are interconnected gifts from God.
+
+=== SECTION 2: SINGLE KEYWORDS (Level 1 targets) ===
+
+Grace comes from God alone.
+Grace is freely given to humanity.
+The concept of grace transforms lives.
+Freedom is a precious gift.
+Freedom liberates the soul.
+True freedom comes from within.
+
+=== SECTION 3: SYNONYMS (Level 2 targets) ===
+Keywords: grace->mercy, freedom->deliverance/liberation
+
+God's mercy brings deliverance to the broken.
+Divine mercy flows abundantly to all.
+Mercy is the expression of God's love.
+Deliverance from bondage is promised to believers.
+Liberation comes through accepting God's mercy.
+Spiritual liberation transforms the heart.
+
+=== SECTION 4: KEYWORD + MAGICAL WORDS (Level 3 targets) ===
+Pattern: "keyword is/brings/leads to..."
+
+Grace is God's unearned favor to humanity.
+Grace is the foundation of salvation.
+Grace brings transformation to the soul.
+Grace leads to eternal life.
+Freedom is living without spiritual chains.
+Freedom is the birthright of believers.
+Freedom brings joy and peace.
+Freedom leads to authentic worship.
+
+=== SECTION 5: DEEPER THEOLOGICAL CONTENT ===
+
+The mystery of grace reveals God's character.
+Understanding grace requires humility and faith.
+Freedom in Christ differs from worldly freedom.
+Spiritual freedom enables true worship.
+Grace empowers believers to overcome sin.
+Freedom from guilt comes through accepting grace.

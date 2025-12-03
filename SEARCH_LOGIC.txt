@@ -1,0 +1,169 @@
+================================================================================
+                    AI VECTOR SEARCH - SEARCH LOGIC DOCUMENTATION
+================================================================================
+
+OVERVIEW
+--------
+This system uses Multi-Level Retrieval to find relevant sentences from documents.
+When you ask "Where is heaven?", the system:
+  1. Extracts keywords from your question (e.g., "heaven")
+  2. Searches through 4 levels to find relevant sentences
+  3. Ranks results using AI-powered vector similarity
+
+
+================================================================================
+STEP 1: KEYWORD EXTRACTION
+================================================================================
+
+Your question is analyzed by AI to extract meaningful keywords:
+
+  Question                              Extracted Keywords
+  ------------------------------------  ----------------------
+  "Where is heaven?"                    ["heaven"]
+  "What is salvation?"                  ["salvation"]
+  "Why did Jesus die on the cross?"     ["Jesus", "cross", "die"]
+
+FILTERED OUT: 
+  - Question words: where, what, why, who, when, how
+  - Common verbs: is, are, was, were, be, do, have
+  - Articles: the, a, an
+  - Prepositions: in, on, at, to, for, with
+
+
+================================================================================
+STEP 2: MULTI-LEVEL SEARCH
+================================================================================
+
+FOR SINGLE KEYWORD QUERIES (e.g., "Where is heaven?"):
+-------------------------------------------------------
+
+LEVEL 1: KEYWORD + MAGICAL WORDS
+  - What: Combines keyword with context words (is, are, was, means...)
+  - Example: "heaven is", "heaven was", "heaven means"
+  - Method: Finds sentences containing BOTH words
+  - Result: 13-15 sentences with contextual matches
+  - Best for: Finding definitional or descriptive sentences
+
+LEVEL 2: SYNONYMS + MAGICAL WORDS
+  - What: AI generates synonyms, then combines with magic words
+  - Example: "paradise is", "celestial was", "sky means"
+  - Method: Finds sentences with synonym AND magic word
+  - Best for: Finding related concepts with context
+
+LEVEL 3: ONLY KEYWORD (FALLBACK)
+  - What: Searches for keyword alone
+  - Example: "heaven" -> finds remaining sentences
+  - Best for: Comprehensive coverage after specific searches exhausted
+
+
+FOR MULTIPLE KEYWORD QUERIES (e.g., "What is grace and freedom?"):
+------------------------------------------------------------------
+
+LEVEL 0: KEYWORD COMBINATIONS
+  - What: Searches for sentences containing ALL keywords together
+  - Example: ["grace", "freedom"] -> searches "grace AND freedom"
+  - Best for: Finding highly specific matches
+
+LEVEL 1: KEYWORD + MAGICAL WORDS
+  - Same as above, but for each keyword
+
+LEVEL 2: SYNONYMS ONLY
+  - Just synonyms without magic words
+
+LEVEL 3: SINGLE KEYWORDS (FALLBACK)
+  - Each keyword individually
+
+
+================================================================================
+SEARCH TECHNOLOGY
+================================================================================
+
+TEXT SEARCH (Elasticsearch)
+---------------------------
+  - match: Finds sentences containing the word(s)
+  - match_phrase: Finds exact phrases (words adjacent)
+  - bool/must: Requires ALL terms to be present
+
+VECTOR SEARCH (AI Embeddings)
+-----------------------------
+  - Each sentence converted to 1536-dimension vector using OpenAI
+  - Your query also converted to a vector
+  - Cosine similarity measures how "close" meanings are
+  - Higher score = more semantically relevant
+
+COMBINED SCORING
+----------------
+  Final Score = Text Match x Vector Similarity
+
+
+================================================================================
+EXAMPLE: "WHERE IS HEAVEN?" (SINGLE KEYWORD)
+================================================================================
+
+  Query: "Where is heaven?"
+       |
+       v
+  Keyword Extraction: ["heaven"] (single keyword detected)
+       |
+       v
+  Level 1: keyword + magic words
+           "heaven is", "heaven was", "heaven means"...
+           -> 13-15 sentences containing BOTH words
+       |
+       v
+  Level 2: synonyms + magic words
+           "paradise is", "celestial was", "sky means"...
+           -> additional sentences with synonym + magic word
+       |
+       v
+  Level 3: only keyword (fallback)
+           "heaven" alone
+           -> remaining sentences containing just "heaven"
+       |
+       v
+  Return top 15 sentences ranked by vector similarity
+
+SINGLE KEYWORD FLOW:
+  Level 1: keyword + magical words     (heaven is, heaven was)
+  Level 2: synonyms + magical words    (paradise is, celestial was)
+  Level 3: only keyword                (heaven)
+
+
+================================================================================
+SCORE INTERPRETATION
+================================================================================
+
+  Score Range     Meaning
+  -------------   ------------------------------------------
+  8.0+            Highly relevant - directly answers question
+  6.0 - 8.0       Relevant - contains key concepts
+  4.0 - 6.0       Somewhat relevant - related topic
+  < 4.0           Low relevance - loosely connected
+
+
+================================================================================
+"TELL ME MORE" FEATURE
+================================================================================
+
+When you click "Tell Me More":
+  1. System remembers previously shown sentences
+  2. Moves to next level or fetches more from current level
+  3. Never repeats the same sentence twice
+
+
+================================================================================
+TECHNICAL STACK
+================================================================================
+
+  Component           Technology
+  -----------------   ----------------------------------
+  Text Search         Elasticsearch 8.x
+  AI Embeddings       OpenAI text-embedding-3-small
+  LLM                 DeepSeek / GPT-4o-mini
+  Backend API         FastAPI (Python)
+  Frontend UI         Streamlit
+
+
+================================================================================
+                              END OF DOCUMENTATION
+================================================================================

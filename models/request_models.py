@@ -22,7 +22,7 @@ class AskRequest(BaseModel):
     custom_prompt: Optional[str] = Field(
         None,
         description="Custom prompt/instructions from user (will be appended to the prompt)",
-        max_length=1000,
+        max_length=10000,
         example="Please answer in bullet points. Focus on practical examples."
     )
     limit: Optional[int] = Field(
@@ -39,6 +39,12 @@ class AskRequest(BaseModel):
         le=20,
         example=15
     )
+    keyword_meaning: Optional[str] = Field(
+        None,
+        description="Pre-generated keyword meaning (if provided, API will skip LLM call to generate meaning)",
+        max_length=5000,
+        example="**Heaven**: The spiritual realm where God dwells."
+    )
 
     class Config:
         json_schema_extra = {
@@ -46,7 +52,8 @@ class AskRequest(BaseModel):
                 "query": "What are the duties of a class teacher?",
                 "custom_prompt": "Please answer in bullet points.",
                 "limit": 15,
-                "buffer_percentage": 15
+                "buffer_percentage": 15,
+                "keyword_meaning": "**Teacher**: An educator responsible for guiding students."
             }
         }
 
@@ -61,7 +68,7 @@ class ContinueRequest(BaseModel):
     custom_prompt: Optional[str] = Field(
         None,
         description="Custom prompt/instructions for this continue request",
-        max_length=1000,
+        max_length=10000,
         example="Focus more on specific regulations and rules."
     )
     limit: Optional[int] = Field(
