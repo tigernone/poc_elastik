@@ -1,4 +1,17 @@
-- name: 🚀 Deploy to VPS via SSH
+name: 🚀 Deploy AI Vector Search (Streamlit + FastAPI)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Cho phép trigger thủ công
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
