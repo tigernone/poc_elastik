@@ -1,17 +1,4 @@
-name: 🚀 Deploy AI Vector Search (Streamlit + FastAPI)
-
-on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:  # Cho phép trigger thủ công
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 🚀 Deploy to VPS via SSH
+- name: 🚀 Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
@@ -31,11 +18,8 @@ jobs:
             PROJECT_DIR="/srv/poc_elastik"
             REPO_BRANCH="main"
             
-            # Load environment
+            # Load basic path (chỉ giữ lại cái này là đủ)
             export PATH=$PATH:/usr/local/bin:/usr/bin
-            export NVM_DIR="$HOME/.nvm"
-            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-            [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
             
             # ============================================
             # 1. CLONE/UPDATE CODE
@@ -43,6 +27,7 @@ jobs:
             echo ""
             echo ">>> [1/6] Cập nhật source code..."
             
+            # Tạo thư mục nếu chưa có
             if [ ! -d "$PROJECT_DIR" ]; then
               echo "Creating project directory..."
               sudo mkdir -p "$PROJECT_DIR"
@@ -51,11 +36,14 @@ jobs:
             
             cd "$PROJECT_DIR"
             
+            # Clone nếu chưa có (Dùng github-poc như đã config)
             if [ ! -d ".git" ]; then
               echo "Cloning repository..."
               git clone git@github-poc:${{ github.repository }}.git .
             fi
             
+            # Pull code mới nhất
+            echo "Fetching latest code..."
             git fetch origin $REPO_BRANCH
             git reset --hard origin/$REPO_BRANCH
             echo "✅ Code updated successfully"
@@ -96,11 +84,7 @@ jobs:
             
             if [ ! -f ".env" ]; then
               echo "⚠️  WARNING: .env file not found!"
-              echo "Please create .env file with required variables:"
-              echo "  - OPENAI_API_KEY"
-              echo "  - ES_HOST"
-              echo "  - ES_USERNAME (optional)"
-              echo "  - ES_PASSWORD (optional)"
+              echo "Please manually create .env file on server"
             else
               echo "✅ .env file exists"
             fi
@@ -111,13 +95,17 @@ jobs:
             echo ""
             echo ">>> [4/6] Kiểm tra Elasticsearch..."
             
+            # Load biến ES_HOST từ .env nếu có, hoặc dùng default
+            if [ -f ".env" ]; then
+              export $(grep -v '^#' .env | xargs)
+            fi
             ES_HOST="${ES_HOST:-http://localhost:9200}"
             
             if curl -s "$ES_HOST" > /dev/null 2>&1; then
               echo "✅ Elasticsearch is running at $ES_HOST"
             else
-              echo "⚠️  WARNING: Elasticsearch is not responding at $ES_HOST"
-              echo "Please ensure Elasticsearch is running"
+              echo "⚠️  WARNING: Elasticsearch is NOT responding at $ES_HOST"
+              echo "Script will continue, but App might fail."
             fi
             
             # ============================================
@@ -130,7 +118,7 @@ jobs:
             pm2 delete poc-fastapi 2>/dev/null || true
             pm2 delete poc-streamlit 2>/dev/null || true
             
-            # Kill any remaining processes
+            # Kill processes safety
             pkill -f "uvicorn main:app" 2>/dev/null || true
             pkill -f "streamlit run streamlit_app.py" 2>/dev/null || true
             
@@ -143,31 +131,27 @@ jobs:
             echo ""
             echo ">>> [6/6] Khởi động services mới..."
             
-            # Create logs directory
             mkdir -p logs
-            
-            # Activate venv for PM2
             VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
             
-            # Start FastAPI Backend (port 8000)
-            echo "Starting FastAPI on port 8000..."
+            # Start FastAPI
+            echo "Starting FastAPI..."
             pm2 start $VENV_PYTHON \
               --name poc-fastapi \
               --cwd "$PROJECT_DIR" \
               -- -m uvicorn main:app --host 0.0.0.0 --port 8000
             
-            sleep 3
+            sleep 5
             
-            # Verify FastAPI is running
+            # Verify FastAPI
             if curl -s http://localhost:8000/health > /dev/null 2>&1; then
               echo "✅ FastAPI is running"
             else
-              echo "⚠️  FastAPI may not be ready yet, waiting..."
-              sleep 5
+              echo "⚠️  FastAPI health check failed (might just be slow startup)"
             fi
             
-            # Start Streamlit Frontend (port 8501)
-            echo "Starting Streamlit on port 8501..."
+            # Start Streamlit
+            echo "Starting Streamlit..."
             pm2 start $VENV_PYTHON \
               --name poc-streamlit \
               --cwd "$PROJECT_DIR" \
@@ -177,32 +161,8 @@ jobs:
                 --server.headless true \
                 --browser.gatherUsageStats false
             
-            sleep 3
-            
             # ============================================
-            # SAVE & VERIFY
+            # SAVE & EXIT
             # ============================================
-            echo ""
-            echo ">>> Lưu cấu hình PM2..."
             pm2 save
-            
-            echo ""
-            echo ">>> Thiết lập PM2 khởi động cùng hệ thống..."
-            pm2 startup systemd -u $USER --hp $HOME 2>/dev/null || true
-            
-            echo ""
-            echo "=============================================="
             echo "✅ DEPLOYMENT COMPLETED!"
-            echo "=============================================="
-            echo ""
-            echo "📍 Services:"
-            echo "   - FastAPI:   http://localhost:8000"
-            echo "   - Streamlit: http://localhost:8501"
-            echo "   - API Docs:  http://localhost:8000/docs"
-            echo ""
-            pm2 list
-            echo ""
-            echo "📊 To check logs:"
-            echo "   pm2 logs poc-fastapi"
-            echo "   pm2 logs poc-streamlit"
-            echo "=============================================="
