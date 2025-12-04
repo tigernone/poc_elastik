@@ -34,9 +34,10 @@ jobs:
             REPO_BRANCH="main"
             
             # Load bash profile để có đủ PATH (nvm, npm, pm2...)
-            [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
-            [ -f "$HOME/.profile" ] && source "$HOME/.profile"
-            [ -f "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+            # Dùng || true để tránh lỗi khi .bashrc có interactive checks
+            source "$HOME/.bashrc" 2>/dev/null || true
+            source "$HOME/.profile" 2>/dev/null || true
+            source "$HOME/.nvm/nvm.sh" 2>/dev/null || true
             
             # Load path cơ bản + npm global
             export PATH=$PATH:/usr/local/bin:/usr/bin:$HOME/.npm-global/bin:$HOME/.local/bin
