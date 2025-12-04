@@ -110,62 +110,89 @@ jobs:
             fi
             
             # ============================================
-            # 4. RESTART SERVICES
+            # 4. SETUP SYSTEMD SERVICES
             # ============================================
             echo ""
-            echo ">>> [4/5] Khởi động lại services..."
+            echo ">>> [4/5] Cấu hình systemd services..."
             
-            # Kiểm tra pm2
-            if ! command -v pm2 &> /dev/null; then
-              echo "❌ pm2 not found! Installing..."
-              npm install -g pm2
-            fi
-            echo "pm2 location: $(which pm2)"
-            
-            # Xóa tiến trình cũ
-            pm2 delete poc-fastapi 2>/dev/null || true
-            pm2 delete poc-streamlit 2>/dev/null || true
-            pkill -f "uvicorn main:app" 2>/dev/null || true
-            pkill -f "streamlit run streamlit_app.py" 2>/dev/null || true
-            
-            # Đợi 2s để tiến trình kết thúc hoàn toàn
-            sleep 2
-            
-            # Khởi động lại
             VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
             
-            # 1. FastAPI
-            pm2 start $VENV_PYTHON \
-              --name poc-fastapi \
-              --cwd "$PROJECT_DIR" \
-              -- -m uvicorn main:app --host 0.0.0.0 --port 8000
+            # Tạo service file cho FastAPI
+            sudo tee /etc/systemd/system/poc-fastapi.service > /dev/null <<EOF
+            [Unit]
+            Description=POC FastAPI Backend
+            After=network.target
             
-            # 2. Streamlit
-            pm2 start $VENV_PYTHON \
-              --name poc-streamlit \
-              --cwd "$PROJECT_DIR" \
-              -- -m streamlit run streamlit_app.py \
-                --server.port 8501 \
-                --server.address 0.0.0.0 \
-                --server.headless true \
-                --browser.gatherUsageStats false
+            [Service]
+            Type=simple
+            User=$USER
+            WorkingDirectory=$PROJECT_DIR
+            Environment="PATH=$PROJECT_DIR/venv/bin:/usr/local/bin:/usr/bin"
+            EnvironmentFile=$PROJECT_DIR/.env
+            ExecStart=$VENV_PYTHON -m uvicorn main:app --host 0.0.0.0 --port 8000
+            Restart=always
+            RestartSec=3
             
-            # Đợi pm2 khởi động xong
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            
+            # Tạo service file cho Streamlit
+            sudo tee /etc/systemd/system/poc-streamlit.service > /dev/null <<EOF
+            [Unit]
+            Description=POC Streamlit Frontend
+            After=network.target
+            
+            [Service]
+            Type=simple
+            User=$USER
+            WorkingDirectory=$PROJECT_DIR
+            Environment="PATH=$PROJECT_DIR/venv/bin:/usr/local/bin:/usr/bin"
+            EnvironmentFile=$PROJECT_DIR/.env
+            ExecStart=$VENV_PYTHON -m streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
+            Restart=always
+            RestartSec=3
+            
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+            
+            echo "✅ Systemd service files created"
+            
+            # ============================================
+            # 5. RESTART SERVICES
+            # ============================================
+            echo ""
+            echo ">>> [5/6] Khởi động lại services..."
+            
+            # Reload systemd và restart services
+            sudo systemctl daemon-reload
+            sudo systemctl enable poc-fastapi poc-streamlit
+            sudo systemctl restart poc-fastapi
+            sudo systemctl restart poc-streamlit
+            
+            # Đợi services khởi động
             sleep 3
-            pm2 list
             
             # ============================================
-            # 5. FINISH
+            # 6. FINISH
             # ============================================
-            pm2 save
             echo ""
             echo "=============================================="
             echo "✅ DEPLOYMENT SUCCESSFUL!"
             echo "=============================================="
             echo ""
-            echo "📍 Services are running:"
+            echo "📍 Services Status:"
+            sudo systemctl status poc-fastapi --no-pager -l || true
+            echo ""
+            sudo systemctl status poc-streamlit --no-pager -l || true
+            echo ""
+            echo "📍 URLs:"
             echo "   - FastAPI: http://YOUR_SERVER_IP:8000/docs"
             echo "   - Web App: http://YOUR_SERVER_IP:8501"
             echo ""
-            echo "📊 PM2 Status:"
-            pm2 status
+            echo "📝 Useful commands:"
+            echo "   sudo systemctl status poc-fastapi"
+            echo "   sudo systemctl status poc-streamlit"
+            echo "   sudo journalctl -u poc-fastapi -f"
+            echo "   sudo journalctl -u poc-streamlit -f"
