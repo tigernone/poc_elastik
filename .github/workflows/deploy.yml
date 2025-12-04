@@ -33,8 +33,13 @@ jobs:
             PROJECT_DIR="/srv/poc_elastik"
             REPO_BRANCH="main"
             
-            # Load path cơ bản
-            export PATH=$PATH:/usr/local/bin:/usr/bin
+            # Load bash profile để có đủ PATH (nvm, npm, pm2...)
+            [ -f "$HOME/.bashrc" ] && source "$HOME/.bashrc"
+            [ -f "$HOME/.profile" ] && source "$HOME/.profile"
+            [ -f "$HOME/.nvm/nvm.sh" ] && source "$HOME/.nvm/nvm.sh"
+            
+            # Load path cơ bản + npm global
+            export PATH=$PATH:/usr/local/bin:/usr/bin:$HOME/.npm-global/bin:$HOME/.local/bin
             
             # ============================================
             # 1. CLONE/UPDATE CODE
@@ -109,11 +114,21 @@ jobs:
             echo ""
             echo ">>> [4/5] Khởi động lại services..."
             
+            # Kiểm tra pm2
+            if ! command -v pm2 &> /dev/null; then
+              echo "❌ pm2 not found! Installing..."
+              npm install -g pm2
+            fi
+            echo "pm2 location: $(which pm2)"
+            
             # Xóa tiến trình cũ
             pm2 delete poc-fastapi 2>/dev/null || true
             pm2 delete poc-streamlit 2>/dev/null || true
             pkill -f "uvicorn main:app" 2>/dev/null || true
             pkill -f "streamlit run streamlit_app.py" 2>/dev/null || true
+            
+            # Đợi 2s để tiến trình kết thúc hoàn toàn
+            sleep 2
             
             # Khởi động lại
             VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
@@ -134,12 +149,22 @@ jobs:
                 --server.headless true \
                 --browser.gatherUsageStats false
             
+            # Đợi pm2 khởi động xong
+            sleep 3
+            pm2 list
+            
             # ============================================
             # 5. FINISH
             # ============================================
             pm2 save
             echo ""
+            echo "=============================================="
             echo "✅ DEPLOYMENT SUCCESSFUL!"
-            echo "Check URLs:"
-            echo "- FastAPI: http://$Input_HOST:8000/docs"
-            echo "- Web App: http://$Input_HOST:8501"
+            echo "=============================================="
+            echo ""
+            echo "📍 Services are running:"
+            echo "   - FastAPI: http://YOUR_SERVER_IP:8000/docs"
+            echo "   - Web App: http://YOUR_SERVER_IP:8501"
+            echo ""
+            echo "📊 PM2 Status:"
+            pm2 status
