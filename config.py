@@ -1,6 +1,7 @@
 # config.py
 from typing import Optional
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from functools import lru_cache
 
 
@@ -18,6 +19,14 @@ class Settings(BaseSettings):
 
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     CHAT_MODEL: str = "deepseek-chat"  # or gpt-4o-mini
+
+    @field_validator("ES_USERNAME", "ES_PASSWORD", "OPENAI_BASE_URL", "EMBEDDING_API_KEY", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v):
+        """Convert empty strings to None"""
+        if v == "" or v is None:
+            return None
+        return v
 
     class Config:
         env_file = ".env"
