@@ -1,0 +1,7 @@
+# SSH vào VPS rồi chạy:
+docker run -d --name es-demo \
+  -p 9200:9200 \
+  -e "discovery.type=single-node" \
+  -e "xpack.security.enabled=false" \
+  --restart unless-stopped \
+  docker.elastic.co/elasticsearch/elasticsearch:8.15.0
