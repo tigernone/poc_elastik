@@ -117,45 +117,43 @@ jobs:
             
             VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
             
-            # Tạo service file cho FastAPI
-            sudo tee /etc/systemd/system/poc-fastapi.service > /dev/null <<EOF
+            # Tạo service file cho FastAPI (dùng sed để strip leading spaces)
+            cat << 'FASTAPI_EOF' | sed 's/^[[:space:]]*//' | sudo tee /etc/systemd/system/poc-fastapi.service > /dev/null
             [Unit]
             Description=POC FastAPI Backend
             After=network.target
-            
+
             [Service]
             Type=simple
-            User=$USER
-            WorkingDirectory=$PROJECT_DIR
-            Environment="PATH=$PROJECT_DIR/venv/bin:/usr/local/bin:/usr/bin"
-            EnvironmentFile=$PROJECT_DIR/.env
-            ExecStart=$VENV_PYTHON -m uvicorn main:app --host 0.0.0.0 --port 8000
+            WorkingDirectory=/srv/poc_elastik
+            Environment=PATH=/srv/poc_elastik/venv/bin:/usr/local/bin:/usr/bin
+            EnvironmentFile=/srv/poc_elastik/.env
+            ExecStart=/srv/poc_elastik/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
             Restart=always
             RestartSec=3
-            
+
             [Install]
             WantedBy=multi-user.target
-            EOF
+            FASTAPI_EOF
             
             # Tạo service file cho Streamlit
-            sudo tee /etc/systemd/system/poc-streamlit.service > /dev/null <<EOF
+            cat << 'STREAMLIT_EOF' | sed 's/^[[:space:]]*//' | sudo tee /etc/systemd/system/poc-streamlit.service > /dev/null
             [Unit]
             Description=POC Streamlit Frontend
             After=network.target
-            
+
             [Service]
             Type=simple
-            User=$USER
-            WorkingDirectory=$PROJECT_DIR
-            Environment="PATH=$PROJECT_DIR/venv/bin:/usr/local/bin:/usr/bin"
-            EnvironmentFile=$PROJECT_DIR/.env
-            ExecStart=$VENV_PYTHON -m streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
+            WorkingDirectory=/srv/poc_elastik
+            Environment=PATH=/srv/poc_elastik/venv/bin:/usr/local/bin:/usr/bin
+            EnvironmentFile=/srv/poc_elastik/.env
+            ExecStart=/srv/poc_elastik/venv/bin/python -m streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --browser.gatherUsageStats false
             Restart=always
             RestartSec=3
-            
+
             [Install]
             WantedBy=multi-user.target
-            EOF
+            STREAMLIT_EOF
             
             echo "✅ Systemd service files created"
             
