@@ -50,17 +50,8 @@ def extract_keywords_raw(query: str) -> List[str]:
     Extract keywords from query using LLM.
     Returns raw keywords before filtering.
     """
-    prompt = f"""Extract ONLY meaningful keywords from this question.
-
-RULES:
-1. Extract ONLY nouns and key concepts (theological/spiritual terms)
-2. DO NOT include:
-   - Question words: where, what, when, who, why, how, which
-   - Inferred/implied words like "location", "place", "reason", "time", "person"
-   - Common verbs: is, are, was, were, be, do, does, did, have, has
-   - Prepositions: in, on, at, to, for, with, about, between
-   - Articles: the, a, an
-3. Return ONLY the actual meaningful words that appear or are directly related to the topic
+    prompt = f"""Extract the main keywords from the following text. 
+Return only the keywords, comma-separated, without explanations.
 
 Question: "{query}"
 
