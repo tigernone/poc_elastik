@@ -292,11 +292,112 @@ with col1:
     )
 
 with col2:
+    default_prompt = """Rewrite the following sermon using ONLY the ideas, meaning, and phrases found in the provided source content. Produce a clear, structured, narrative-style sermon with strong section titles. Titles must always reflect the meaning of each section and stay connected to the source content.
+
+Your task is to transform the source into a fresh, engaging sermon that flows logically from beginning to end. The sermon must feel natural, narrative, and personally addressed to the reader.
+
+1. Greeting + Title Requirements
+
+Begin with a warm greeting using {name_type} when available.
+If {name_type} exists, use variations such as:
+"Hello, {name_type}, let's explore this together."
+"Welcome, {name_type}. I'm glad to walk through this with you."
+"Hi {name_type}, I'm excited to share this message with you."
+
+If {name_type} is not available, use neutral versions such as:
+"Hello! Let's explore this together."
+"Welcome! I'm glad to walk through this message with you."
+
+Immediately after greeting, create a main sermon title that is meaningful, fresh, and deeply connected to the core message derived from the source content.
+The title must be strong, inspiring, and 100% relevant to the content.
+
+Then begin the sermon.
+
+2. Structural Format You MUST Follow
+
+You must ALWAYS format the sermon in this structure:
+
+Title: [Meaningful, Source-Based Title]
+
+Introduction Section Title:
+A short, engaging introduction.
+
+Theme Section Titles (3–5 sections):
+Break the sermon into multiple sections.
+Each section must have its own meaningful title related to the ideas of the source.
+Each section must expand on one of the 3–5 themes identified from the source.
+All paragraphs must connect clearly to the source themes.
+
+Closing Section Title:
+A concluding reflection that ties everything together.
+
+The entire sermon must be minimum 1,200 words unless the user specifies another length.
+
+3. Strict Rules
+
+Follow all of these without exception:
+
+Do NOT mention rhetorical techniques.
+
+Do NOT reference sources, citations, or original documents.
+
+Do NOT introduce new stories, outside metaphors, or external theology.
+
+Do NOT repeat past sermons; every output must be completely fresh.
+
+Do NOT use the words: "symphony," "tapestry," "dance."
+
+Identify 3–5 core themes from the source BEFORE writing; use them throughout.
+
+Maintain warm, flowing narrative tone.
+
+Use only plain text; no bullet points, emojis, or symbols.
+
+All content must come ONLY from the source provided.
+
+Avoid formulaic greetings; vary them naturally across sermons.
+
+4. Engagement Rules
+
+Make the sermon feel personal, warm, and reflective.
+
+Use variations of greetings and phrasing so the sermons never sound repetitive.
+
+The sermon must feel like it is written uniquely for the reader, while still staying 100% consistent with the themes drawn from the provided source content.
+
+5. Final Instruction
+
+Produce the final sermon exactly in the structure below:
+
+Title
+[Main Title]
+
+[Introduction Title]
+[Introduction paragraphs]
+
+[Theme Section Title 1]
+[Section paragraphs]
+
+[Theme Section Title 2]
+[Section paragraphs]
+
+[Theme Section Title 3]
+[Section paragraphs]
+
+[Theme Section Title 4 or 5 (optional)]
+[Section paragraphs]
+
+[Closing Section Title]
+[Closing paragraphs]
+
+Do not add any other notes or comments."""
+    
     custom_prompt = st.text_area(
         "Custom prompt (optional):",
-        placeholder="E.g., Answer in bullet points",
+        value=default_prompt,
         height=100,
-        key="custom_prompt_input"
+        key="custom_prompt_input",
+        help="You can edit this default sermon prompt or replace it with your own"
     )
 
 # Action buttons
