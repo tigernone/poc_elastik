@@ -494,6 +494,10 @@ class MultiLevelRetriever:
         
         print(f"[Level 2] Total synonym+magic pairs: {len(all_synonym_magic_pairs)}")
         
+        # Early stopping: stop if no results found after N consecutive attempts
+        max_empty_attempts = 20
+        consecutive_empty = 0
+        
         while len(sentences) < limit and current_offset < len(all_synonym_magic_pairs):
             synonym, magic = all_synonym_magic_pairs[current_offset]
             phrase = f"{synonym} {magic}"
@@ -509,14 +513,22 @@ class MultiLevelRetriever:
                 match_type="match"  # Finds both words in sentence
             )
             
-            for r in results:
-                if r["text"] not in used_texts:
-                    r["synonym_used"] = synonym
-                    r["magic_word"] = magic
-                    sentences.append(r)
-                    used_texts.add(r["text"])
-                if len(sentences) >= limit:
-                    break
+            if results:
+                consecutive_empty = 0  # Reset counter on success
+                for r in results:
+                    if r["text"] not in used_texts:
+                        r["synonym_used"] = synonym
+                        r["magic_word"] = magic
+                        sentences.append(r)
+                        used_texts.add(r["text"])
+                    if len(sentences) >= limit:
+                        break
+            else:
+                consecutive_empty += 1
+                if consecutive_empty >= max_empty_attempts:
+                    print(f"[Level 2] Early stop: {consecutive_empty} consecutive empty results")
+                    exhausted = True
+                    return sentences, current_offset, exhausted
             
             current_offset += 1
         
@@ -685,7 +697,8 @@ class MultiLevelRetriever:
 def get_next_batch(
     session_state: Dict[str, Any],
     keywords: List[str],
-    batch_size: int = 15
+    batch_size: int = 15,
+    enabled_levels: Optional[List[int]] = None
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], int]:
     """
     Central function to get next batch of sentences.
@@ -705,12 +718,19 @@ def get_next_batch(
         session_state: Dict with current_level, level_offsets, used_sentence_ids
         keywords: Clean keywords for search
         batch_size: Number of sentences to return
+        enabled_levels: List of levels to search (e.g., [0, 2]). If None, searches all levels.
     
     Returns:
         (sentences, updated_session_state, current_level_used)
     """
     retriever = MultiLevelRetriever(keywords)
     is_single_keyword = len(keywords) == 1
+    
+    # If enabled_levels specified, only search those levels
+    if enabled_levels is None:
+        enabled_levels = [0, 1, 2, 3]
+    
+    logger.info(f"[get_next_batch] Searching levels: {enabled_levels}")
     
     sentences = []
     current_level = session_state.get("current_level", 0)
@@ -720,6 +740,12 @@ def get_next_batch(
     level_used = current_level
     
     while len(sentences) < batch_size and current_level <= 3:
+        # Skip disabled levels
+        if current_level not in enabled_levels:
+            logger.info(f"[get_next_batch] Skipping disabled level {current_level}")
+            current_level += 1
+            continue
+        
         remaining = batch_size - len(sentences)
         
         if current_level == 0:

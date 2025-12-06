@@ -7,7 +7,7 @@ A user-friendly web interface to interact with the API.
 import streamlit as st
 import requests
 import json
-from typing import Optional
+from typing import Optional, List
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
@@ -87,7 +87,7 @@ def upload_file(file, split_mode: str = "auto"):
 
 
 def ask_question(query: str, custom_prompt: Optional[str] = None, 
-                 limit: int = 15, buffer_percentage: int = 15):
+                 limit: int = 15, buffer_percentage: int = 15, enabled_levels: Optional[List[int]] = None):
     """Send a question to the API"""
     try:
         payload = {
@@ -97,6 +97,8 @@ def ask_question(query: str, custom_prompt: Optional[str] = None,
         }
         if custom_prompt:
             payload["custom_prompt"] = custom_prompt
+        if enabled_levels is not None:
+            payload["enabled_levels"] = enabled_levels
         
         response = requests.post(f"{API_BASE_URL}/ask", json=payload, timeout=600)
         if response.status_code == 200:
@@ -218,6 +220,44 @@ with st.sidebar:
     limit = st.slider("Source sentences limit", min_value=5, max_value=50, value=15)
     buffer_percentage = st.slider("Buffer percentage", min_value=10, max_value=20, value=15)
     
+    # Level Selection
+    st.markdown("### 🎯 Level Selection (for testing)")
+    st.markdown("""
+    <div style='font-size: 0.9em; line-height: 1.5; margin-bottom: 10px;'>
+    Select which levels to search.<br/>
+    Uncheck levels to skip them for<br/>
+    faster testing.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Use vertical layout for better text display
+    level_0_enabled = st.checkbox("✓ Level 0", value=True, help="Keyword combinations", key="lvl0")
+    level_1_enabled = st.checkbox("✓ Level 1", value=True, help="Single keywords", key="lvl1")
+    level_2_enabled = st.checkbox("✓ Level 2", value=True, help="Synonyms", key="lvl2")
+    level_3_enabled = st.checkbox("✓ Level 3", value=True, help="Keyword + Magic words", key="lvl3")
+    
+    # Store selected levels
+    enabled_levels = []
+    if level_0_enabled:
+        enabled_levels.append(0)
+    if level_1_enabled:
+        enabled_levels.append(1)
+    if level_2_enabled:
+        enabled_levels.append(2)
+    if level_3_enabled:
+        enabled_levels.append(3)
+    
+    if not enabled_levels:
+        st.warning("⚠️ Select at least one level")
+    else:
+        levels_text = ', '.join([f'Level {l}' for l in enabled_levels])
+        st.markdown(f"""
+        <div style='background-color: #cce5ff; padding: 8px; border-radius: 5px; 
+                    font-size: 0.85em; line-height: 1.4; border-left: 3px solid #007bff;'>
+        ✓ Searching levels:<br/><strong>{levels_text}</strong>
+        </div>
+        """, unsafe_allow_html=True)
+    
     st.markdown("---")
     st.markdown("""
     ### 💡 How to use:
@@ -304,7 +344,8 @@ if ask_button and user_question:
                 query=user_question,
                 custom_prompt=custom_prompt if custom_prompt else None,
                 limit=limit,
-                buffer_percentage=buffer_percentage
+                buffer_percentage=buffer_percentage,
+                enabled_levels=enabled_levels if enabled_levels else None
             )
             
             if status_code == 200 and "answer" in result:
@@ -400,11 +441,16 @@ if st.session_state.conversation_history:
         if sources:
             for src in sources:
                 level = src.get("level", 0)
+                sub_level = src.get("sub_level", None)
                 score = src.get("score", 0)
                 text = src.get("text", "")
+                
+                # Display sub_level if available (for single keyword mode)
+                level_display = sub_level if sub_level else level
+                
                 st.markdown(f"""
                 <div class="source-sentence">
-                    <strong>Level {level}</strong> (Score: {score:.2f})<br>
+                    <strong>Level {level_display}</strong> (Score: {score:.2f})<br>
                     {text}
                 </div>
                 """, unsafe_allow_html=True)

@@ -534,7 +534,8 @@ async def ask(req: AskRequest):
     source_sentences, updated_state, level_used = get_next_batch(
         session_state=initial_state,
         keywords=clean_keywords,
-        batch_size=req.limit if req.limit else 15
+        batch_size=req.limit if req.limit else 15,
+        enabled_levels=req.enabled_levels if req.enabled_levels else None
     )
     
     if not source_sentences:

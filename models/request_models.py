@@ -45,6 +45,11 @@ class AskRequest(BaseModel):
         max_length=5000,
         example="**Heaven**: The spiritual realm where God dwells."
     )
+    enabled_levels: Optional[List[int]] = Field(
+        None,
+        description="List of levels to search (e.g., [0, 2] to search only Level 0 and Level 2). If None, searches all levels.",
+        example=[0, 1, 2, 3]
+    )
 
     class Config:
         json_schema_extra = {
