@@ -35,6 +35,7 @@ Level 3: Single Keywords (fallback)
     - Search: "grace", "freedom" individually
 """
 from typing import List, Dict, Any, Set, Tuple, Optional
+import logging
 from services.embedder import get_embedding
 from vector.elastic_client import es
 from config import settings
@@ -43,6 +44,9 @@ from services.keyword_extractor import (
     generate_synonyms,
     generate_keyword_magical_pairs
 )
+
+# Setup logger
+logger = logging.getLogger(__name__)
 
 INDEX = settings.ES_INDEX_NAME
 
@@ -73,6 +77,17 @@ class MultiLevelRetriever:
         self.level2_keyword_index = 0
         self.level2_synonym_index = 0
         self.level3_index = 0
+    
+    def _contains_keyword(self, text: str, keywords: List[str]) -> bool:
+        """
+        Check if text contains at least one of the keywords.
+        Case-insensitive matching.
+        """
+        text_lower = text.lower()
+        for keyword in keywords:
+            if keyword.lower() in text_lower:
+                return True
+        return False
     
     def _exact_phrase_search(
         self,
@@ -157,7 +172,8 @@ class MultiLevelRetriever:
         limit: int = 15,
         exclude_texts: Set[str] = None,
         use_vector: bool = True,
-        match_type: str = "match"
+        match_type: str = "match",
+        require_all_words: bool = False
     ) -> List[Dict[str, Any]]:
         """
         Search Elasticsearch with text and optional vector scoring.
@@ -168,6 +184,7 @@ class MultiLevelRetriever:
             exclude_texts: Sentences to exclude
             use_vector: Whether to combine with vector search
             match_type: "match", "match_phrase", or "multi_match"
+            require_all_words: If True, results must contain all words in query_text (stricter matching)
         """
         must_not = []
         if exclude_texts:
@@ -200,10 +217,12 @@ class MultiLevelRetriever:
                 "multi_match": {
                     "query": query_text,
                     "fields": ["text"],
-                    "type": "best_fields"
+                    "type": "best_fields",
+                    "operator": "and" if require_all_words else "or"
                 }
             }
         else:
+            # Use "and" operator to require all words present
             text_query = {"match": {"text": {"query": query_text, "operator": "and"}}}
         
         # Combine with bool query if we have exclusions
@@ -221,7 +240,7 @@ class MultiLevelRetriever:
         if use_vector:
             query_vec = get_embedding(query_text)
             body = {
-                "size": limit * 2,  # Get more for deduplication
+                "size": limit * 3,  # Get more for deduplication and filtering
                 "query": {
                     "script_score": {
                         "query": bool_query,
@@ -234,7 +253,7 @@ class MultiLevelRetriever:
             }
         else:
             body = {
-                "size": limit * 2,
+                "size": limit * 3,
                 "query": bool_query
             }
         
@@ -252,6 +271,14 @@ class MultiLevelRetriever:
                     continue
                 if exclude_texts and text in exclude_texts:
                     continue
+                
+                # Additional validation when require_all_words is True
+                if require_all_words:
+                    # Check all words from query are in the text
+                    query_words = query_text.lower().split()
+                    text_lower = text.lower()
+                    if not all(word in text_lower for word in query_words):
+                        continue
                     
                 seen_texts.add(text)
                 results.append({
@@ -265,8 +292,10 @@ class MultiLevelRetriever:
                 if len(results) >= limit:
                     break
             
+            logger.info(f"[ES Results] Found {len(results)} results for query '{query_text[:50]}...'")
             return results
         except Exception as e:
+            logger.error(f"Search error for query '{query_text[:50]}...': {e}")
             print(f"Search error: {e}")
             return []
     
@@ -283,6 +312,7 @@ class MultiLevelRetriever:
         
         Returns: (sentences, new_offset, exhausted)
         """
+        logger.info(f"[Level 0] Starting search - offset={offset}, limit={limit}, used_texts={len(used_texts)}")
         sentences = []
         current_offset = offset
         
@@ -297,7 +327,8 @@ class MultiLevelRetriever:
                 limit=limit - len(sentences),
                 exclude_texts=used_texts,
                 use_vector=True,
-                match_type="multi_match"
+                match_type="multi_match",
+                require_all_words=True
             )
             
             # Add non-duplicate sentences
@@ -349,6 +380,7 @@ class MultiLevelRetriever:
         while len(sentences) < limit and current_offset < len(self.level1_keywords):
             keyword = self.level1_keywords[current_offset]
             
+            logger.info(f"[Level 1] Searching for keyword: '{keyword}' (offset={current_offset}/{len(self.level1_keywords)})")
             print(f"[Level 1] Searching for keyword: '{keyword}'")
             
             # Search for single keyword - get ALL matching sentences
@@ -357,7 +389,8 @@ class MultiLevelRetriever:
                 limit=sentences_per_keyword,  # Get many more matches
                 exclude_texts=used_texts,
                 use_vector=True,
-                match_type="match"
+                match_type="match",
+                require_all_words=True
             )
             
             print(f"[Level 1] Found {len(results)} sentences containing '{keyword}'")
@@ -520,62 +553,63 @@ class MultiLevelRetriever:
         if single_keyword_mode and len(self.keywords) == 1:
             # SINGLE KEYWORD MODE: Sub-levels
             # Each magic word is a separate sub-level (1.0, 1.1, 1.2...)
-            # IMPORTANT: Exhaust ALL results for current magic word BEFORE moving to next
             keyword = self.keywords[0]
             
-            while current_offset < len(magic_words):
+            while len(sentences) < limit and current_offset < len(magic_words):
                 magic = magic_words[current_offset]
                 current_magic_word = magic
+                phrase = f"{keyword} {magic}"
                 
-                # Search for BOTH orders: "keyword magic" AND "magic keyword"
-                phrase1 = f"{keyword} {magic}"  # e.g., "heaven is"
-                phrase2 = f"{magic} {keyword}"  # e.g., "is heaven"
+                print(f"[Level 1.{current_offset}] Searching exact phrase: '{phrase}'")
                 
-                print(f"[Level 1.{current_offset}] Searching: '{phrase1}' or '{phrase2}'")
-                
-                # Priority 1: EXACT consecutive match "keyword magic" (slop=0 only!)
-                # NO words allowed between keyword and magic word
-                # Set HIGH limit to get ALL matching sentences
-                exact_results1 = self._exact_phrase_search(
-                    phrase=phrase1,
-                    limit=500,  # High limit to get ALL results
+                # Priority 1: EXACT consecutive match (slop=0) - e.g., "heaven is"
+                exact_results = self._exact_phrase_search(
+                    phrase=phrase,
+                    limit=100,
                     exclude_texts=used_texts,
-                    slop=0  # MUST be consecutive - no words in between
+                    slop=0
                 )
                 
-                # Priority 2: EXACT consecutive match "magic keyword" (reversed order)
-                exact_results2 = self._exact_phrase_search(
-                    phrase=phrase2,
-                    limit=500,  # High limit to get ALL results
-                    exclude_texts=used_texts,
-                    slop=0  # MUST be consecutive - no words in between
-                )
+                print(f"[Level 1.{current_offset}] Found {len(exact_results)} EXACT matches for '{phrase}'")
                 
-                # Combine results (avoid duplicates)
-                all_results = exact_results1
-                seen_texts = {r["text"] for r in all_results}
-                for r in exact_results2:
-                    if r["text"] not in seen_texts:
-                        all_results.append(r)
-                        seen_texts.add(r["text"])
-                
-                print(f"[Level 1.{current_offset}] Found {len(exact_results1)} for '{phrase1}', {len(exact_results2)} for '{phrase2}' (EXACT only, no words between)")
-                
-                # Add ALL matches for this magic word (no limit check here)
-                # This ensures we exhaust current magic word before moving to next
-                for r in all_results:
+                # Add exact matches first (highest priority)
+                for r in exact_results:
                     if r["text"] not in used_texts:
                         r["magic_word"] = magic
                         r["sub_level"] = f"1.{current_offset}"
-                        r["match_type"] = "exact_consecutive"
+                        r["match_type"] = "exact_phrase"
                         r["score"] = r.get("score", 1.0) * 3.0  # Boost exact matches
                         sentences.append(r)
                         used_texts.add(r["text"])
+                    if len(sentences) >= limit:
+                        break
                 
-                # Move to next magic word ONLY after adding ALL results from current one
+                # Priority 2: Near match (slop=1-2) if we need more
+                if len(sentences) < limit:
+                    near_results = self._exact_phrase_search(
+                        phrase=phrase,
+                        limit=50,
+                        exclude_texts=used_texts,
+                        slop=2
+                    )
+                    
+                    print(f"[Level 1.{current_offset}] Found {len(near_results)} NEAR matches for '{phrase}' (slop=2)")
+                    
+                    for r in near_results:
+                        if r["text"] not in used_texts:
+                            r["magic_word"] = magic
+                            r["sub_level"] = f"1.{current_offset}"
+                            r["match_type"] = "near_phrase"
+                            r["score"] = r.get("score", 1.0) * 2.0  # Boost near matches
+                            sentences.append(r)
+                            used_texts.add(r["text"])
+                        if len(sentences) >= limit:
+                            break
+                
+                # Move to next magic word after processing current one
                 current_offset += 1
                 
-                # Stop if we have enough sentences now
+                # If we got enough sentences for this batch, stop
                 if len(sentences) >= limit:
                     break
             
@@ -703,7 +737,6 @@ def get_next_batch(
             
         elif current_level == 1:
             # Level 1: Keyword + Magic words (e.g., "heaven is", "heaven was")
-            # For single keyword: ONLY return sentences with keyword + magic word CONSECUTIVE
             new_sents, new_offset, exhausted, magic_word = retriever.fetch_level3_sentences(
                 offset=level_offsets.get("1", 0),
                 limit=remaining,
@@ -716,23 +749,20 @@ def get_next_batch(
             if magic_word:
                 level_offsets["1_magic_word"] = magic_word
             
-            # For single keyword: If Level 1 exhausted, DON'T go to Level 2/3
-            # We only want keyword + magic word matches, no fallback to single keyword
-            if is_single_keyword and exhausted:
-                print(f"[INFO] Level 1 exhausted for single keyword. Found {len(sentences) + len(new_sents)} sentences with keyword+magic word.")
-                sentences.extend(new_sents)
-                for s in new_sents:
-                    used_texts.add(s["text"])
-                # STOP HERE - don't continue to Level 2/3 for single keyword
-                break
-            
         elif current_level == 2:
             # Level 2: For single keyword = synonyms + magic words
             #          For multiple keywords = synonyms only
-            # SKIP for single keyword - we only want exact keyword + magic word
             if is_single_keyword:
-                current_level = 3
-                continue
+                # Handle case where offset might be a list from previous run
+                offset_2 = level_offsets.get("2", 0)
+                if isinstance(offset_2, list):
+                    offset_2 = 0  # Reset if it was a list
+                new_sents, new_offset, exhausted = retriever.fetch_level2_synonyms_with_magic(
+                    offset=offset_2,
+                    limit=remaining,
+                    used_texts=used_texts
+                )
+                level_offsets["2"] = new_offset
             else:
                 offsets = level_offsets.get("2", [0, 0])
                 if isinstance(offsets, int):
@@ -747,10 +777,6 @@ def get_next_batch(
             
         elif current_level == 3:
             # Level 3: Single keywords only (fallback)
-            # SKIP for single keyword - we only want keyword + magic word matches
-            if is_single_keyword:
-                print(f"[INFO] Skipping Level 3 for single keyword. Only returning keyword+magic word matches.")
-                break
             new_sents, new_offset, exhausted = retriever.fetch_level1_sentences(
                 offset=level_offsets.get("3", 0),
                 limit=remaining,

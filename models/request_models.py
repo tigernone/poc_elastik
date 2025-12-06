@@ -152,6 +152,10 @@ class AskResponse(BaseModel):
         ..., 
         description="3-4 variants of the original question"
     )
+    keywords: List[str] = Field(
+        default_factory=list,
+        description="List of extracted keywords from the query"
+    )
     keyword_meaning: str = Field(
         ..., 
         description="Explanation of main keywords"
@@ -210,6 +214,7 @@ class ContinueResponse(BaseModel):
     session_id: str = Field(..., description="Session ID")
     answer: str = Field(..., description="Expanded answer from AI")
     question_variants: str = Field(..., description="NEW question variants (no repeats)")
+    keywords: List[str] = Field(default_factory=list, description="List of extracted keywords")
     keyword_meaning: str = Field(..., description="NEW/deeper keyword meanings")
     source_sentences: List[SourceSentence] = Field(..., description="Source sentences from deeper levels")
     current_level: int = Field(..., description="Current level")

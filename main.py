@@ -15,11 +15,23 @@ Full-featured Q&A system with:
 """
 import os
 import uuid
+import logging
 from datetime import datetime
 from typing import List
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/app.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 from config import settings
 from vector.elastic_client import init_index, es
@@ -467,6 +479,8 @@ async def ask(req: AskRequest):
     Level 2: Synonym-based search
     Level 3: Keyword + Magical words combinations
     """
+    logger.info(f"[API /ask] New request - query='{req.query}', limit={req.limit}")
+    
     # Check if data exists
     if get_document_count() == 0:
         raise HTTPException(
@@ -477,6 +491,7 @@ async def ask(req: AskRequest):
     # Step 1: Extract clean keywords (filtered from magic words)
     clean_keywords = extract_clean_keywords(req.query)
     
+    logger.info(f"[API /ask] Extracted keywords: {clean_keywords}")
     print(f"[DEBUG] Query: '{req.query}' → Keywords extracted: {clean_keywords}")
     
     if not clean_keywords:
@@ -524,11 +539,14 @@ async def ask(req: AskRequest):
     
     if not source_sentences:
         # Fallback to old method if multi-level returns nothing
+        logger.warning(f"[API /ask] Multi-level retrieval returned no results, using fallback")
         source_sentences = get_top_unique_sentences_grouped(
             req.query, 
             limit=req.limit,
             buffer_percentage=req.buffer_percentage
         )
+    
+    logger.info(f"[API /ask] Retrieved {len(source_sentences)} source sentences")
     
     if not source_sentences:
         raise HTTPException(
@@ -586,6 +604,7 @@ async def ask(req: AskRequest):
         session_id=session.session_id,
         answer=answer,
         question_variants=question_variants,
+        keywords=clean_keywords,  # Add extracted keywords list
         keyword_meaning=keyword_meaning,
         source_sentences=source_sentences,
         current_level=level_used,
@@ -649,9 +668,12 @@ async def continue_conversation(req: ContinueRequest):
     
     Each call fetches next batch of sentences, avoiding previously used ones.
     """
+    logger.info(f"[API /continue] Session={req.session_id}, limit={req.limit}")
+    
     # Get session
     session = session_manager.get_session(req.session_id)
     if not session:
+        logger.warning(f"[API /continue] Session not found: {req.session_id}")
         raise HTTPException(
             status_code=404,
             detail="Session not found or expired (30 min timeout). Please ask a new question with POST /ask"
@@ -683,6 +705,7 @@ async def continue_conversation(req: ContinueRequest):
             session_id=session.session_id,
             answer="All available information has been explored. Please start a new conversation with a different question.",
             question_variants=[],
+            keywords=session.keywords if hasattr(session, 'keywords') and session.keywords else [],
             keyword_meaning="All keywords have been fully explored.",
             source_sentences=[],
             current_level=updated_state.get("current_level", 21),
@@ -741,6 +764,7 @@ async def continue_conversation(req: ContinueRequest):
         session_id=session.session_id,
         answer=answer,
         question_variants=question_variants,
+        keywords=session.keywords if hasattr(session, 'keywords') and session.keywords else [],
         keyword_meaning=keyword_meaning,
         source_sentences=source_sentences,
         current_level=level_used,

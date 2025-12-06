@@ -20,5 +20,13 @@ __pycache__/
 uploads/*
 !uploads/.gitkeep
 
+# Logs
+logs/
+*.log
+app.log
+fastapi.log
+streamlit.log
+ngrok.log
+
 # OS
 .DS_Store

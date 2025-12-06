@@ -50,55 +50,85 @@ def extract_keywords_raw(query: str) -> List[str]:
     Extract keywords from query using LLM.
     Returns raw keywords before filtering.
     """
-    prompt = f"""Extract the main keywords from the following text. 
-Return only the keywords, comma-separated, without explanations.
+    prompt = f"""Extract ALL important keywords and phrases from the following text.
 
-Question: "{query}"
+INSTRUCTIONS:
+1. Extract ALL meaningful nouns, names, concepts, and phrases
+2. Include proper names (Lord, Jesus, God, etc.)
+3. Include compound phrases ("Master's table", "Holy Spirit", etc.)
+4. DO NOT skip any significant words
+5. Return as a JSON array
 
-Example 1: "Where is heaven?" → ["heaven"]
-Example 2: "What is salvation?" → ["salvation"]  
-Example 3: "Why did Jesus die on the cross?" → ["Jesus", "cross", "die"]
-Example 4: "Who is the Holy Spirit?" → ["Holy Spirit"]
+Examples:
+- "Where is heaven?" → ["heaven"]
+- "Lord give me faith" → ["Lord", "faith"]
+- "What is the Holy Spirit?" → ["Holy Spirit"]
+- "Woman at the Master's table" → ["woman", "Master's table"]
 
-Return as JSON array only, no explanation.
-"""
+Text:
+"{query}"
+
+Return ONLY a JSON array, nothing else:"""
     
     try:
+        print(f"[KeywordExtractor] Extracting keywords from: {query}")
         response = client.chat.completions.create(
-            model=settings.CHAT_MODEL,  # Use configured chat model (deepseek-chat or gpt-4o-mini)
+            model=settings.CHAT_MODEL,
             messages=[
-                {"role": "system", "content": "You are a keyword extractor. Return only JSON array."},
+                {"role": "system", "content": "You are a precise keyword extractor. Extract ALL important keywords including proper names, compound phrases, and meaningful concepts. Return ONLY a JSON array."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.3,
-            max_tokens=200
+            temperature=0.0,  # Zero temperature for maximum consistency
+            max_tokens=300
         )
         
         content = response.choices[0].message.content.strip()
+        print(f"[KeywordExtractor] LLM response: {content}")
         
         # Parse JSON - handle various formats
         # Try to find JSON array in response
         match = re.search(r'\[.*?\]', content, re.DOTALL)
         if match:
             keywords = json.loads(match.group())
-            return [k.lower().strip() for k in keywords if isinstance(k, str)]
+            result = [k.lower().strip() for k in keywords if isinstance(k, str)]
+            print(f"[KeywordExtractor] Extracted keywords: {result}")
+            return result
         
+        print(f"[KeywordExtractor] No JSON array found in response")
         return []
     except Exception as e:
-        print(f"Error extracting keywords: {e}")
+        print(f"[KeywordExtractor] Error extracting keywords: {e}")
         # Fallback: simple word extraction, filter magic words
         words = query.lower().split()
         # Filter out magic words and short words
         filtered = [w for w in words if len(w) > 2 and w not in MAGIC_WORDS]
-        return filtered if filtered else [w for w in words if len(w) > 3]
+        fallback = filtered if filtered else [w for w in words if len(w) > 3]
+        print(f"[KeywordExtractor] Using fallback extraction: {fallback}")
+        return fallback
 
 
 def filter_magic_words(keywords: List[str]) -> List[str]:
     """
     Filter out magic words from keyword list.
     Magic words are stopwords, common verbs, prepositions, etc.
+    
+    EXCEPTION: Preserve important proper names even if they're in magic_words list
+    (e.g., Lord, God, Jesus, Christ, etc.)
     """
-    return [k for k in keywords if k.lower() not in MAGIC_WORDS]
+    # Important religious/proper names that should NEVER be filtered
+    important_names = {
+        'lord', 'god', 'jesus', 'christ', 'spirit', 'holy spirit',
+        'father', 'son', 'holy', 'savior', 'messiah', 'yahweh', 'jehovah'
+    }
+    
+    filtered = []
+    for k in keywords:
+        k_lower = k.lower()
+        # Keep if it's an important name OR not in magic words
+        if k_lower in important_names or k_lower not in MAGIC_WORDS:
+            filtered.append(k)
+    
+    return filtered
 
 
 def extract_keywords(query: str) -> List[str]:
@@ -107,13 +137,18 @@ def extract_keywords(query: str) -> List[str]:
     Returns clean keywords ready for search.
     """
     raw_keywords = extract_keywords_raw(query)
+    print(f"[KeywordExtractor] Raw keywords before filtering: {raw_keywords}")
+    
     clean_keywords = filter_magic_words(raw_keywords)
+    print(f"[KeywordExtractor] After magic word filtering: {clean_keywords}")
     
     # If all keywords were filtered, return original (excluding very common ones)
     if not clean_keywords and raw_keywords:
         very_common = {"is", "are", "was", "were", "the", "a", "an", "of", "to", "in"}
         clean_keywords = [k for k in raw_keywords if k not in very_common]
+        print(f"[KeywordExtractor] All filtered, using fallback: {clean_keywords}")
     
+    print(f"[KeywordExtractor] FINAL keywords returned: {clean_keywords}")
     return clean_keywords
 
 
