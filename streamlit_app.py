@@ -70,18 +70,16 @@ def check_api_health():
 
 
 def upload_file(file, split_mode: str = "auto"):
-    """Upload a file to the API (timeout 30 minutes for large files)"""
+    """Upload a file to the API (no timeout for large files)"""
     try:
         files = {"file": (file.name, file.getvalue(), "text/plain")}
-        # Timeout 30 phút cho file lớn (31k+ sentences)
+        # Không có timeout - cho phép upload file lớn (80MB, có thể mất ~1 tiếng)
         response = requests.post(
             f"{API_BASE_URL}/upload?split_mode={split_mode}", 
             files=files,
-            timeout=1800  # 30 minutes
+            timeout=None  # No timeout
         )
         return response.json(), response.status_code
-    except requests.exceptions.Timeout:
-        return {"detail": "Upload timed out after 30 minutes. File may be too large."}, 408
     except Exception as e:
         return {"detail": str(e)}, 500
 
