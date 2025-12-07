@@ -52,7 +52,8 @@ def generate_question_variants(
     
     resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=settings.LLM_MAX_TOKENS,
     )
     return resp.choices[0].message.content.strip()
 
@@ -88,7 +89,8 @@ def extract_keywords(
     
     resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=settings.LLM_MAX_TOKENS,
     )
     return resp.choices[0].message.content.strip()
 
@@ -175,6 +177,7 @@ def call_llm(prompt: str) -> str:
     """Call LLM to generate answer"""
     resp = chat_client.chat.completions.create(
         model=settings.CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}]
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=settings.LLM_MAX_TOKENS,
     )
     return resp.choices[0].message.content.strip()
