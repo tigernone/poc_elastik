@@ -25,9 +25,10 @@ class ConversationSession:
     current_level: int = 0  # Current level (0 → 1 → 2 → 3)
     level_offsets: Dict[str, Any] = field(default_factory=lambda: {
         "0": 0,      # Level 0: combination index
-        "1": 0,      # Level 1: single keyword index  
-        "2": [0, 0], # Level 2: [keyword_index, synonym_index]
-        "3": 0       # Level 3: keyword+magic pair index
+        "1": 0,      # Level 1: keyword+magic index
+        "2": 0,      # Level 2: synonym combinations index
+        "3": 0,      # Level 3: synonym+magic index
+        "4": 0       # Level 4: semantic vector offset (not paginated, kept for parity)
     })
     
     # Keywords and sentences
