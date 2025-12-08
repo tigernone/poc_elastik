@@ -564,7 +564,9 @@ async def ask(req: AskRequest):
         session_state=initial_state,
         keywords=clean_keywords,
         batch_size=req.limit if req.limit else 15,
-        enabled_levels=req.enabled_levels if req.enabled_levels else None
+        enabled_levels=req.enabled_levels if req.enabled_levels else None,
+        original_query=req.query,  # NEW: Pass original query for semantic search
+        semantic_count=5  # NEW: Always get 5 semantic results
     )
     
     if not source_sentences:
@@ -753,7 +755,9 @@ async def continue_conversation(req: ContinueRequest):
     source_sentences, updated_state, level_used = get_next_batch(
         session_state=session_state,
         keywords=keywords,
-        batch_size=req.limit if req.limit else 15
+        batch_size=req.limit if req.limit else 15,
+        original_query=session.original_query,  # NEW: Pass original query for semantic search
+        semantic_count=5  # NEW: Always get 5 semantic results
     )
     
     # If no more sentences, return response with can_continue=False

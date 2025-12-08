@@ -31,6 +31,91 @@ logger = logging.getLogger(__name__)
 INDEX = settings.ES_INDEX_NAME
 
 
+def get_pure_semantic_search(
+    query: str,
+    limit: int = 5,
+    exclude_texts: Set[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Pure semantic/vector search - NO keyword filtering.
+    Always returns top K nearest neighbors based on cosine similarity.
+    
+    Use this as a fallback to ALWAYS get relevant results even when
+    keyword-based searches fail.
+    
+    Args:
+        query: Original user query (full sentence)
+        limit: Number of results to return
+        exclude_texts: Texts to exclude from results
+        
+    Returns:
+        List of {text, level, score, sentence_index, _id}
+    """
+    logger.info(f"[Pure Semantic Search] query='{query[:50]}...', limit={limit}")
+    
+    # Get embedding for the full query
+    query_vec = get_embedding(query)
+    
+    # Build must_not clause for exclusions
+    must_not = []
+    if exclude_texts:
+        for text in list(exclude_texts)[:100]:  # Limit to avoid query too large
+            must_not.append({"match_phrase": {"text": text}})
+    
+    # Pure vector search - NO text filtering, just cosine similarity
+    body = {
+        "size": limit * 2,  # Get more, then filter
+        "query": {
+            "script_score": {
+                "query": {
+                    "bool": {
+                        "must": [{"match_all": {}}],  # No keyword filter
+                        "must_not": must_not
+                    }
+                } if must_not else {"match_all": {}},
+                "script": {
+                    "source": "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                    "params": {"query_vector": query_vec},
+                },
+            }
+        },
+    }
+    
+    try:
+        resp = es.search(index=INDEX, body=body)
+        results: List[Dict[str, Any]] = []
+        seen_texts: Set[str] = set()
+        
+        for hit in resp["hits"]["hits"]:
+            src = hit["_source"]
+            text = src["text"]
+            
+            if text in seen_texts:
+                continue
+            if exclude_texts and text in exclude_texts:
+                continue
+                
+            seen_texts.add(text)
+            results.append({
+                "text": text,
+                "level": src.get("level", 0),
+                "score": hit.get("_score", 1.0),
+                "sentence_index": src.get("sentence_index", 0),
+                "_id": hit["_id"],
+                "source": "pure_semantic"  # Mark as semantic search result
+            })
+            
+            if len(results) >= limit:
+                break
+        
+        logger.info(f"[Pure Semantic Search] Found {len(results)} semantically similar sentences")
+        return results
+        
+    except Exception as e:
+        logger.error(f"[Pure Semantic Search] Error: {e}")
+        return []
+
+
 class MultiLevelRetriever:
     def __init__(self, keywords: List[str]):
         self.keywords = keywords
@@ -439,14 +524,36 @@ def get_next_batch(
     keywords: List[str],
     batch_size: int = 15,
     enabled_levels: Optional[List[int]] = None,
+    original_query: str = None,  # NEW: Original query for semantic search
+    semantic_count: int = 5,  # NEW: Always get 5 semantic results
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], int]:
+    """
+    Get next batch of sentences using multi-level retrieval.
+    
+    NEW BEHAVIOR:
+    - Get (batch_size - semantic_count) from keyword-based levels (e.g., 10 sentences)
+    - ALWAYS get semantic_count from pure semantic search (e.g., 5 sentences)
+    - This ensures we ALWAYS have relevant results even if keyword search fails
+    
+    Args:
+        session_state: Current session state
+        keywords: Extracted keywords
+        batch_size: Total sentences to return (default 15)
+        enabled_levels: Which levels to search (default all)
+        original_query: Original user query for semantic search
+        semantic_count: How many pure semantic results to include (default 5)
+    """
     retriever = MultiLevelRetriever(keywords)
     is_single_keyword = len(keywords) == 1
     if enabled_levels is None:
         enabled_levels = [0, 1, 2, 3, 4]
 
+    logger.info(f"[get_next_batch] Strategy: {batch_size - semantic_count} keyword-based + {semantic_count} semantic")
     logger.info(f"[get_next_batch] Searching levels: {enabled_levels}")
 
+    # Calculate how many to get from keyword-based levels
+    keyword_batch_size = max(1, batch_size - semantic_count)
+    
     sentences: List[Dict[str, Any]] = []
     current_level = session_state.get("current_level", 0)
     level_offsets = session_state.get(
@@ -455,12 +562,13 @@ def get_next_batch(
     used_texts = set(session_state.get("used_sentence_ids", []))
     level_used = current_level
 
-    while len(sentences) < batch_size and current_level <= 4:
+    # PART 1: Get keyword-based sentences (10 sentences)
+    while len(sentences) < keyword_batch_size and current_level <= 4:
         if current_level not in enabled_levels:
             current_level += 1
             continue
 
-        remaining = batch_size - len(sentences)
+        remaining = keyword_batch_size - len(sentences)
 
         if current_level == 0:
             if is_single_keyword:
@@ -516,6 +624,7 @@ def get_next_batch(
 
         for sent in new_sents:
             sent["level"] = current_level
+            sent["source"] = f"level_{current_level}"  # Mark source
         sentences.extend(new_sents)
         for s in new_sents:
             used_texts.add(s["text"])
@@ -526,10 +635,42 @@ def get_next_batch(
         else:
             level_used = current_level
 
+    # PART 2: ALWAYS get semantic results (5 sentences)
+    semantic_results = []
+    if original_query:
+        logger.info(f"[get_next_batch] Adding {semantic_count} pure semantic results")
+        semantic_results = get_pure_semantic_search(
+            query=original_query,
+            limit=semantic_count,
+            exclude_texts=used_texts
+        )
+        
+        # Mark as semantic with clear labels
+        for sent in semantic_results:
+            sent["source"] = "vector_search"  # Changed to "vector_search"
+            sent["source_type"] = "Vector/Semantic Search"  # Human-readable label
+            sent["is_primary_source"] = True  # Mark as primary
+        
+        # Add to used_texts to avoid duplicates in future calls
+        for s in semantic_results:
+            used_texts.add(s["text"])
+        
+        logger.info(f"[get_next_batch] Total: {len(sentences) + len(semantic_results)} sentences ({len(sentences)} keyword + {len(semantic_results)} semantic)")
+    else:
+        logger.warning("[get_next_batch] No original_query provided, skipping semantic search")
+
+    # Mark keyword results with clear labels
+    for sent in sentences:
+        sent["source_type"] = f"Keyword Match (Level {sent.get('level', 0)})"
+        sent["is_primary_source"] = False  # Mark as secondary
+
+    # IMPORTANT: Put semantic results FIRST (on top), keyword results after
+    final_results = semantic_results + sentences
+
     updated_state = {
         "current_level": current_level,
         "level_offsets": level_offsets,
         "used_sentence_ids": list(used_texts),
     }
 
-    return sentences, updated_state, level_used
+    return final_results, updated_state, level_used
