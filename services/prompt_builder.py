@@ -29,7 +29,7 @@ Be thorough and spiritually insightful."""
             model=settings.CHAT_MODEL,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=800
+            max_tokens=2000  # Increased for longer, detailed responses
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
