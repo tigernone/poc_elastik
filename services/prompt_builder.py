@@ -13,7 +13,27 @@ def generate_question_variants(query: str, previous_variants: List[str] = None, 
     return f"Variants of: {query}"
 
 def extract_keywords(query: str, previous_keywords: str = None, continue_mode: bool = False) -> str:
-    return f"Keywords from: {query}"
+    """Generate detailed keyword meaning in the context of Bible and Ellen G. White's writings"""
+    prompt = f"""What is the detailed meaning, in both the Bible and Ellen G. White's writings, of the prayer: "{query}", specifically for understanding the model needed to write a sermon?
+
+Provide a comprehensive explanation covering:
+1. Biblical context and references
+2. Ellen G. White's perspective on this topic
+3. How this applies to sermon writing
+4. Key theological insights
+
+Be thorough and spiritually insightful."""
+    
+    try:
+        response = client.chat.completions.create(
+            model=settings.CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=800
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Error generating meaning: {str(e)}"
 
 def build_final_prompt(user_query: str, question_variants: str, keyword_meaning: str, source_sentences: List[Dict[str, Any]], continue_mode: bool = False, continue_count: int = 0, custom_prompt: str = None) -> str:
     vector_sources = [s for s in source_sentences if s.get("is_primary_source", False)]

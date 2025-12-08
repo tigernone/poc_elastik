@@ -215,10 +215,14 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Settings
-    st.subheader("⚙️ Settings")
-    limit = st.slider("Source sentences limit", min_value=5, max_value=50, value=15)
-    buffer_percentage = st.slider("Buffer percentage", min_value=10, max_value=20, value=15)
+    # Settings (TEMPORARILY HIDDEN per client request)
+    # st.subheader("⚙️ Settings")
+    # limit = st.slider("Source sentences limit", min_value=5, max_value=50, value=15)
+    # buffer_percentage = st.slider("Buffer percentage", min_value=10, max_value=20, value=15)
+    
+    # Use default values when Settings are hidden
+    limit = 15
+    buffer_percentage = 15
     
     # Level Selection
     st.markdown("### 🎯 Level Selection (for testing)")
@@ -443,15 +447,15 @@ with col1:
 with col2:
     # Debug: show can_continue state
     can_continue_now = st.session_state.get("can_continue", False)
-    # Calculate next level for button label
-    current_level = 1
+    # Calculate next continue_count for button label
+    continue_count = 0
     if st.session_state.conversation_history:
-        last_result = st.session_state.conversation_history[-1].get("result", {})
-        current_level = last_result.get("current_level", 1)
-    next_level = current_level + 1
+        # Count how many "continue" entries exist in history
+        continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
+    next_count = continue_count + 1
     max_level = 20
     
-    button_label = f"📚 Tell me more ({next_level}/{max_level})" if can_continue_now else "📚 Tell me more"
+    button_label = f"📚 Tell me more ({next_count}/{max_level})" if can_continue_now else "📚 Tell me more"
     continue_button = st.button(
         button_label, 
         disabled=not can_continue_now,
@@ -540,7 +544,9 @@ if st.session_state.conversation_history:
             st.markdown(f"> {entry['question']}")
             enabled_levels_entry = entry.get("enabled_levels", st.session_state.get("selected_levels"))
         else:
-            st.markdown(f"### 📚 Tell me more (Level {result.get('current_level', '?')})")
+            # Display continue_count if available, otherwise show current_level
+            tell_more_count = result.get('continue_count', result.get('current_level', '?'))
+            st.markdown(f"### 📚 Tell me more ({tell_more_count})")
             enabled_levels_entry = st.session_state.get("selected_levels")
         
         # Answer
@@ -582,8 +588,8 @@ if st.session_state.conversation_history:
         level3_pairs = result.get("level3_synonym_magic_pairs", [])
         level3_by_kw = result.get("level3_synonym_magic_by_keyword", [])
 
-        # Level 0 / Level 1: show original keywords as their “synonym” reference
-        st.markdown("### 🔁 Level 0 Synonyms (Keywords)")
+        # Level 0 / Level 1: show original keywords as their "synonym" reference
+        st.markdown("### 🔁 Level 0 (keyword combination)")
         if keywords:
             kw_html = " ".join([
                 f'<span style="background-color: #e3f2fd; color: #1976d2; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">{kw}</span>'
@@ -593,7 +599,7 @@ if st.session_state.conversation_history:
         else:
             st.info("No keywords available")
 
-        st.markdown("### 🔁 Level 1 Synonyms (Keywords)")
+        st.markdown("### 🔁 Level 1 (Keywords + magical words)")
         if keywords:
             kw_html = " ".join([
                 f'<span style="background-color: #e3f2fd; color: #1976d2; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">{kw}</span>'
