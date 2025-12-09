@@ -19,6 +19,7 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: 30m
           script: |
+            (
             set -e
             
             echo "=============================================="
@@ -232,4 +233,5 @@ jobs:
             echo "   ./stop_demo.sh     # Stop all services"
             echo "   ./start_demo.sh    # Start with watchdog"
             echo "=============================================="
+            ) || true
             exit 0
