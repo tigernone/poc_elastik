@@ -331,7 +331,8 @@ class MultiLevelRetriever:
                 require_all_words=True,
             )
             for r in results:
-                if r["text"] not in used_texts:
+                # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                     sentences.append(r)
                     used_texts.add(r["text"])
                 if len(sentences) >= limit:
@@ -347,7 +348,8 @@ class MultiLevelRetriever:
                 match_type="match",
             )
             for r in results:
-                if r["text"] not in used_texts:
+                # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                     sentences.append(r)
                     used_texts.add(r["text"])
                 if len(sentences) >= limit:
@@ -381,7 +383,8 @@ class MultiLevelRetriever:
                     slop=0,
                 )
                 for r in exact_results:
-                    if r["text"] not in used_texts:
+                    # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                    if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                         r["magic_word"] = magic
                         r["sub_level"] = f"1.{current_offset}"
                         r["match_type"] = "exact_phrase"
@@ -419,7 +422,8 @@ class MultiLevelRetriever:
                         )
                         results.extend(more_results)
                     for r in results:
-                        if r["text"] not in used_texts:
+                        # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                        if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                             r["magic_word"] = magic
                             r["keyword_used"] = keyword
                             sentences.append(r)
@@ -470,7 +474,8 @@ class MultiLevelRetriever:
                 require_all_words=True,
             )
             for r in results:
-                if r["text"] not in used_texts:
+                # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                     r["synonym_combo"] = combo
                     sentences.append(r)
                     used_texts.add(r["text"])
@@ -508,7 +513,8 @@ class MultiLevelRetriever:
                 slop=0,
             )
             for r in exact_results:
-                if r["text"] not in used_texts:
+                # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                     r["synonym_used"] = synonym
                     r["magic_word"] = magic
                     r["match_type"] = "exact_phrase"
@@ -543,7 +549,8 @@ class MultiLevelRetriever:
                 require_all_words=True,
             )
             for r in results:
-                if r["text"] not in used_texts:
+                # Use is_duplicate to catch near-duplicates (waked vs wakened)
+                if not is_duplicate(r["text"], used_texts, similarity_threshold=0.95):
                     r["keyword_matched"] = keyword
                     sentences.append(r)
                     used_texts.add(r["text"])
@@ -706,18 +713,24 @@ def get_next_batch(
     # This catches near-duplicates like "waked" vs "wakened"
     seen_in_final = set()
     deduplicated_final = []
+    removed_count = 0
+    
     for sent in final_results:
         text = sent.get("text", "")
         if text:
             # Use is_duplicate with 95% threshold to catch near-duplicates
             if is_duplicate(text, seen_in_final, similarity_threshold=0.95):
-                logger.info(f"[Dedup] Removed near-duplicate in final results: '{text[:60]}...'")
+                removed_count += 1
+                logger.warning(f"[Dedup] Removed near-duplicate #{removed_count}: '{text[:80]}...'")
             else:
                 seen_in_final.add(text)
                 deduplicated_final.append(sent)
     
-    logger.info(f"[Dedup] Final results: {len(final_results)} -> {len(deduplicated_final)} (removed {len(final_results) - len(deduplicated_final)} near-duplicates)")
-
+    if removed_count > 0:
+        logger.warning(f"[Dedup] Final results: {len(final_results)} -> {len(deduplicated_final)} (removed {removed_count} near-duplicates)")
+    else:
+        logger.info(f"[Dedup] Final results: {len(final_results)} (no near-duplicates found)")
+    
     updated_state = {
         "current_level": current_level,
         "level_offsets": level_offsets,
