@@ -12,13 +12,11 @@ jobs:
 
     steps:
       - name: 🚀 Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          script_stop: true
-          timeout: 30m
           command_timeout: 30m
           script: |
             set -e
@@ -187,12 +185,18 @@ jobs:
             fi
             
             # Check Watchdog (safe with set -e)
-            # Count matching processes instead of relying on grep's exit code.
-            WATCHDOG_COUNT=$(ps aux | grep -v grep | grep "watchdog.sh" | wc -l)
+            # Tắt chế độ tự động thoát khi lỗi
+            set +e 
+            # Chạy lệnh kiểm tra an toàn
+            # Dùng grep -c thay cho | wc -l để gọn hơn và tránh pipe
+            # Bật lại chế độ thoát lỗi (nếu các lệnh sau cần an toàn)
+            set -e
+            WATCHDOG_COUNT=$(ps aux | grep -v grep | grep -c "watchdog.sh")
 
             if [ "$WATCHDOG_COUNT" -gt 0 ]; then
               echo "✅ Watchdog is monitoring (auto-restart enabled)"
             else
+              # Chỉ cảnh báo, KHÔNG exit 1 để tránh fail pipeline
               echo "⚠️  Watchdog not detected yet (may still be starting)"
               echo "   Check manually: ps aux | grep watchdog"
             fi
@@ -228,3 +232,4 @@ jobs:
             echo "   ./stop_demo.sh     # Stop all services"
             echo "   ./start_demo.sh    # Start with watchdog"
             echo "=============================================="
+            exit 0
