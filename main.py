@@ -18,9 +18,14 @@ import uuid
 import logging
 from datetime import datetime
 from typing import List
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import ClientDisconnect
+import asyncio
+import signal
+import sys
 
 # Setup logging
 logging.basicConfig(
@@ -122,6 +127,64 @@ POST /continue → Use session_id → Next level → Expand answer
     }
 )
 
+# Request size limit middleware
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in ["POST", "PUT", "PATCH"]:
+            content_length = request.headers.get("content-length")
+            if content_length:
+                if int(content_length) > settings.MAX_REQUEST_SIZE:
+                    return JSONResponse(
+                        status_code=413,
+                        content={
+                            "detail": f"Request body too large. Maximum size is {settings.MAX_REQUEST_SIZE / (1024*1024):.1f}MB"
+                        }
+                    )
+        
+        try:
+            response = await call_next(request)
+            return response
+        except ClientDisconnect:
+            logger.warning("Client disconnected during request")
+            return JSONResponse(
+                status_code=499,
+                content={"detail": "Client disconnected"}
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error in middleware: {str(e)}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error. Please try again."}
+            )
+
+# Timeout middleware
+class TimeoutMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Different timeouts for different endpoints
+        timeout = settings.REQUEST_TIMEOUT
+        if "/upload" in request.url.path:
+            timeout = settings.UPLOAD_TIMEOUT
+        
+        try:
+            response = await asyncio.wait_for(
+                call_next(request),
+                timeout=timeout
+            )
+            return response
+        except asyncio.TimeoutError:
+            logger.error(f"Request timeout after {timeout}s: {request.url.path}")
+            return JSONResponse(
+                status_code=504,
+                content={"detail": f"Request timeout after {timeout} seconds. Please try with smaller data or simpler query."}
+            )
+        except Exception as e:
+            logger.error(f"Error in timeout middleware: {str(e)}")
+            raise
+
+# Add middlewares
+app.add_middleware(TimeoutMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+
 # CORS for easy frontend testing
 app.add_middleware(
     CORSMiddleware,
@@ -131,14 +194,41 @@ app.add_middleware(
 )
 
 
+# Global shutdown flag
+shutdown_flag = False
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    global shutdown_flag
+    logger.info(f"Received signal {signum}. Initiating graceful shutdown...")
+    shutdown_flag = True
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
 # Initialize index on app startup
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     try:
         init_index()
+        logger.info("✓ Elasticsearch index initialized")
     except Exception as e:
-        print(f"Warning: Could not initialize Elasticsearch index: {e}")
-        print("Server will continue without Elasticsearch connection.")
+        logger.error(f"Warning: Could not initialize Elasticsearch index: {e}")
+        logger.warning("Server will continue without Elasticsearch connection.")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    logger.info("Shutting down gracefully...")
+    # Add any cleanup here (close connections, save state, etc.)
+    try:
+        # Clear session data
+        session_manager.clear_all_sessions()
+        logger.info("✓ Cleanup completed")
+    except Exception as e:
+        logger.error(f"Error during shutdown cleanup: {e}")
 
 
 # ============================================================

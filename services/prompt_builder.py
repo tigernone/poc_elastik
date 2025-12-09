@@ -76,14 +76,34 @@ ANSWER:"""
     
     return prompt
 
-def call_llm(prompt: str) -> str:
-    try:
-        response = client.chat.completions.create(
-            model=settings.CHAT_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=settings.LLM_MAX_TOKENS  # Use config value (8000)
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"Error: {str(e)}"
+def call_llm(prompt: str, max_retries: int = 3) -> str:
+    """Call LLM with retry logic and timeout handling"""
+    import time
+    from config import settings
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=settings.CHAT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=settings.LLM_MAX_TOKENS,
+                timeout=settings.LLM_TIMEOUT  # Add timeout
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            error_msg = str(e).lower()
+            
+            # Check if it's a retryable error
+            if "timeout" in error_msg or "rate limit" in error_msg or "connection" in error_msg:
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # Exponential backoff
+                    print(f"[LLM] Retry {attempt + 1}/{max_retries} after {wait_time}s: {str(e)[:100]}")
+                    time.sleep(wait_time)
+                    continue
+            
+            # Non-retryable error or max retries reached
+            print(f"[LLM] Error after {attempt + 1} attempts: {str(e)}")
+            return f"Error generating response: {str(e)[:200]}. Please try again with a simpler query."
+    
+    return "Error: Maximum retries reached. Please try again later."

@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     LLM_MAX_CONTEXT: int = 64000  # Max context window for deepseek-chat (input + output)
     LLM_MAX_TOKENS: int = 8000  # Max output tokens for DeepSeek chat completions
 
+    # Request limits and timeouts
+    MAX_REQUEST_SIZE: int = 10 * 1024 * 1024  # 10MB max request body
+    REQUEST_TIMEOUT: int = 600  # 10 minutes timeout for requests
+    LLM_TIMEOUT: int = 300  # 5 minutes timeout for LLM calls
+    UPLOAD_TIMEOUT: int = 3600  # 1 hour timeout for large file uploads
+
     @field_validator("ES_USERNAME", "ES_PASSWORD", "DEEPSEEK_BASE_URL", "OPENAI_API_KEY", mode="before")
     @classmethod
     def empty_str_to_none(cls, v):

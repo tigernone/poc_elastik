@@ -149,9 +149,19 @@ class SessionManager:
         self._cleanup_expired()
         return len(self._sessions)
     
-    def clear_all(self):
-        """Clear all sessions"""
+    def clear_all_sessions(self):
+        """Clear all sessions (for shutdown/cleanup)"""
         self._sessions.clear()
+    
+    def _cleanup_expired(self):
+        """Remove expired sessions"""
+        now = datetime.now()
+        expired = [
+            sid for sid, session in self._sessions.items()
+            if now - session.last_accessed > self._timeout
+        ]
+        for sid in expired:
+            del self._sessions[sid]
     
     def _cleanup_expired(self):
         """Clean up expired sessions"""

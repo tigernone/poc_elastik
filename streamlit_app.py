@@ -75,15 +75,31 @@ def upload_file(file, split_mode: str = "auto"):
     """Upload a file to the API (no timeout for large files)"""
     try:
         files = {"file": (file.name, file.getvalue(), "text/plain")}
-        # Không có timeout - cho phép upload file lớn (80MB, có thể mất ~1 tiếng)
+        # Calculate expected time based on file size (rough estimate)
+        file_size_mb = len(file.getvalue()) / (1024 * 1024)
+        estimated_minutes = max(1, int(file_size_mb / 2))  # ~2MB/minute
+        
+        # Show progress message
+        if file_size_mb > 10:
+            print(f"[Upload] Large file detected ({file_size_mb:.1f}MB). Estimated time: {estimated_minutes} minutes")
+        
+        # No timeout for large files
         response = requests.post(
             f"{API_BASE_URL}/upload?split_mode={split_mode}", 
             files=files,
             timeout=None  # No timeout
         )
         return response.json(), response.status_code
+    except requests.exceptions.RequestException as e:
+        error_msg = str(e)
+        if "ConnectionError" in error_msg or "Connection refused" in error_msg:
+            return {"detail": "Cannot connect to API. The server may have crashed. Please restart the server."}, 503
+        elif "ReadTimeout" in error_msg:
+            return {"detail": "Upload timed out. File may be too large or server is overloaded."}, 504
+        else:
+            return {"detail": f"Upload error: {error_msg[:200]}"}, 500
     except Exception as e:
-        return {"detail": str(e)}, 500
+        return {"detail": f"Unexpected error: {str(e)[:200]}"}, 500
 
 
 def ask_question(query: str, custom_prompt: Optional[str] = None, 
@@ -100,17 +116,31 @@ def ask_question(query: str, custom_prompt: Optional[str] = None,
         if enabled_levels is not None:
             payload["enabled_levels"] = enabled_levels
         
-        response = requests.post(f"{API_BASE_URL}/ask", json=payload, timeout=600)
+        # Use longer timeout for queries with custom prompts
+        timeout_seconds = 600 if not custom_prompt or len(custom_prompt) < 1000 else 900
+        
+        response = requests.post(f"{API_BASE_URL}/ask", json=payload, timeout=timeout_seconds)
         if response.status_code == 200:
             return response.json(), response.status_code
         else:
-            return {"detail": f"API Error: {response.status_code} - {response.text[:200]}"}, response.status_code
+            error_detail = f"API Error: {response.status_code}"
+            try:
+                error_json = response.json()
+                error_detail = error_json.get('detail', error_detail)
+            except:
+                error_detail += f" - {response.text[:200]}"
+            return {"detail": error_detail}, response.status_code
     except requests.exceptions.Timeout:
-        return {"detail": "Request timed out. The response is taking too long. Please try with a shorter custom prompt."}, 408
+        return {
+            "detail": "Request timed out. The query is taking too long. Try: 1) Shorter custom prompt, 2) Disable some levels, or 3) Wait and try again."
+        }, 408
     except requests.exceptions.ConnectionError:
-        return {"detail": "Cannot connect to API. Make sure the server is running."}, 503
+        return {
+            "detail": "Cannot connect to API. The server may have crashed or is not running. Please check logs and restart if needed."
+        }, 503
     except Exception as e:
-        return {"detail": f"Error: {str(e)}"}, 500
+        error_msg = str(e)
+        return {"detail": f"Unexpected error: {error_msg[:200]}"}, 500
 
 
 def continue_conversation(session_id: str, custom_prompt: Optional[str] = None,
@@ -125,17 +155,29 @@ def continue_conversation(session_id: str, custom_prompt: Optional[str] = None,
         if custom_prompt:
             payload["custom_prompt"] = custom_prompt
         
-        response = requests.post(f"{API_BASE_URL}/continue", json=payload, timeout=600)
+        timeout_seconds = 600 if not custom_prompt or len(custom_prompt) < 1000 else 900
+        
+        response = requests.post(f"{API_BASE_URL}/continue", json=payload, timeout=timeout_seconds)
         if response.status_code == 200:
             return response.json(), response.status_code
         else:
-            return {"detail": f"API Error: {response.status_code} - {response.text[:200]}"}, response.status_code
+            error_detail = f"API Error: {response.status_code}"
+            try:
+                error_json = response.json()
+                error_detail = error_json.get('detail', error_detail)
+            except:
+                error_detail += f" - {response.text[:200]}"
+            return {"detail": error_detail}, response.status_code
     except requests.exceptions.Timeout:
-        return {"detail": "Request timed out. The response is taking too long."}, 408
+        return {
+            "detail": "Request timed out. Try with a shorter custom prompt or wait and try again."
+        }, 408
     except requests.exceptions.ConnectionError:
-        return {"detail": "Cannot connect to API. Make sure the server is running."}, 503
+        return {
+            "detail": "Cannot connect to API. The server may have crashed. Please check logs and restart if needed."
+        }, 503
     except Exception as e:
-        return {"detail": f"Error: {str(e)}"}, 500
+        return {"detail": f"Unexpected error: {str(e)[:200]}"}, 500
 
 
 def get_document_stats():

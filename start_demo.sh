@@ -140,7 +140,21 @@ echo -e "${BLUE}📊 Logs:${NC}"
 echo "   FastAPI:   logs/fastapi.log"
 echo "   Streamlit: logs/streamlit.log"
 echo "   ngrok:     logs/ngrok.log"
+echo "   Watchdog:  logs/watchdog.log"
 echo ""
+
+# Start watchdog in background
+echo -e "${BLUE}🔍 Starting watchdog for auto-restart...${NC}"
+chmod +x watchdog.sh
+nohup ./watchdog.sh > /dev/null 2>&1 &
+WATCHDOG_PID=$!
+echo $WATCHDOG_PID > logs/watchdog.pid
+echo -e "${GREEN}✓ Watchdog started (PID: $WATCHDOG_PID)${NC}"
+echo "   - Monitors services every 30s"
+echo "   - Auto-restarts on crash/hang"
+echo "   - Max 5 restarts per hour"
+echo ""
+
 echo -e "${BLUE}To stop all services:${NC}"
 echo "   ./stop_demo.sh"
 echo ""

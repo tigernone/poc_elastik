@@ -28,6 +28,7 @@ stop_service() {
 }
 
 # Stop all services
+stop_service "Watchdog" "logs/watchdog.pid"
 stop_service "FastAPI" "logs/fastapi.pid"
 stop_service "Streamlit" "logs/streamlit.pid"
 stop_service "ngrok" "logs/ngrok.pid"
@@ -35,6 +36,9 @@ stop_service "ngrok" "logs/ngrok.pid"
 # Also kill any remaining processes
 echo ""
 echo "Cleaning up any remaining processes..."
+
+# Kill watchdog first
+pkill -f "watchdog.sh" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up watchdog processes${NC}"
 
 # Kill any remaining uvicorn processes
 pkill -f "uvicorn main:app" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up uvicorn processes${NC}"
