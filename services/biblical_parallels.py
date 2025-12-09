@@ -140,10 +140,13 @@ Output JSON format:
     return result
 
 
-def _tag_sentence(sent: Dict[str, str], source_type: str, is_primary: bool = True) -> Dict[str, str]:
+def _tag_sentence(sent: Dict[str, str], source_type: str, is_primary: bool = True, parallels_section: str = "") -> Dict[str, str]:
+    """Tag sentence with Level 0.0 metadata for display."""
     sent["source"] = "biblical_parallels"
-    sent["source_type"] = source_type
+    sent["source_type"] = f"Level 0.0 - {source_type}"  # Add Level 0.0 prefix
+    sent["level"] = "0.0"  # Mark as Level 0.0
     sent["is_primary_source"] = is_primary
+    sent["parallels_section"] = parallels_section  # Track which section (Stories, Refs, Metaphors, Keywords)
     return sent
 
 
@@ -167,13 +170,13 @@ def gather_biblical_parallels_sentences(
     stories = parallels.get("stories_characters", [])[:5]
     scripture_refs = parallels.get("scripture_references", [])[:4]
     metaphors = parallels.get("biblical_metaphors", [])[:5]
-    keywords = parallels.get("keywords", [])[:8]  # Allow more keywords
+    keywords = parallels.get("keywords", [])[:10]  # Allow up to 10 keywords for ~20 sentences
 
-    logger.info(f"[BiblicalParallels] Gathering sentences - Stories: {stories}, Refs: {scripture_refs}, Metaphors: {metaphors}, Keywords: {keywords}")
+    logger.info(f"[Level 0.0] Biblical Parallels - Stories: {stories}, Refs: {scripture_refs}, Metaphors: {metaphors}, Keywords: {keywords}")
 
     retriever = MultiLevelRetriever(keywords or ([] if base_query is None else base_query.split()))
 
-    def add_vector_items(items: List[str], total_limit: int, label: str):
+    def add_vector_items(items: List[str], total_limit: int, label: str, section: str):
         """Vector search for items, up to total_limit sentences."""
         count = 0
         for item in items:
@@ -181,19 +184,19 @@ def gather_biblical_parallels_sentences(
                 break
             remaining = total_limit - count
             hits = get_pure_semantic_search(item, limit=remaining + 2, exclude_texts=used)
-            logger.info(f"[BiblicalParallels] Vector search '{item}' → {len(hits)} hits for {label}")
+            logger.info(f"[Level 0.0] Vector search '{item}' → {len(hits)} hits for {label}")
             for hit in hits:
                 if count >= total_limit:
                     break
                 if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                     continue
                 hit["parallels_item"] = item  # Track which item this came from
-                collected.append(_tag_sentence(hit, label, is_primary=True))
+                collected.append(_tag_sentence(hit, label, is_primary=True, parallels_section=section))
                 used.add(hit["text"])
                 count += 1
-        logger.info(f"[BiblicalParallels] {label}: collected {count}/{total_limit} sentences")
+        logger.info(f"[Level 0.0] {label}: collected {count}/{total_limit} sentences")
 
-    def add_keyword_vector_items(items: List[str], total_limit: int, label: str):
+    def add_keyword_vector_items(items: List[str], total_limit: int, label: str, section: str):
         """Keyword + vector hybrid search for items."""
         count = 0
         for item in items:
@@ -209,19 +212,19 @@ def gather_biblical_parallels_sentences(
                 match_type="match",
                 require_all_words=False,
             )
-            logger.info(f"[BiblicalParallels] Keyword+Vector search '{item}' → {len(hits)} hits for {label}")
+            logger.info(f"[Level 0.0] Keyword+Vector search '{item}' → {len(hits)} hits for {label}")
             for hit in hits:
                 if count >= total_limit:
                     break
                 if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                     continue
                 hit["parallels_item"] = item
-                collected.append(_tag_sentence(hit, label, is_primary=True))
+                collected.append(_tag_sentence(hit, label, is_primary=True, parallels_section=section))
                 used.add(hit["text"])
                 count += 1
-        logger.info(f"[BiblicalParallels] {label}: collected {count}/{total_limit} sentences")
+        logger.info(f"[Level 0.0] {label}: collected {count}/{total_limit} sentences")
 
-    def add_keyword_items(items: List[str], per_keyword: int, label: str):
+    def add_keyword_items(items: List[str], per_keyword: int, label: str, section: str):
         """Keyword search, 2 sentences per keyword."""
         total_count = 0
         for item in items:
@@ -234,32 +237,46 @@ def gather_biblical_parallels_sentences(
                 match_type="match",
                 require_all_words=True,
             )
-            logger.info(f"[BiblicalParallels] Keyword search '{item}' → {len(hits)} hits for {label}")
+            logger.info(f"[Level 0.0] Keyword search '{item}' → {len(hits)} hits")
             for hit in hits:
                 if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                     continue
                 hit["parallels_item"] = item
-                collected.append(_tag_sentence(hit, f"{label} ({item})", is_primary=False))
+                # Label includes the specific keyword for clarity
+                collected.append(_tag_sentence(hit, f"{label} ({item})", is_primary=False, parallels_section=section))
                 used.add(hit["text"])
                 count_for_item += 1
                 total_count += 1
                 if count_for_item >= per_keyword:
                     break
-        logger.info(f"[BiblicalParallels] {label}: collected {total_count} sentences ({per_keyword} per keyword)")
+            logger.info(f"[Level 0.0] Keyword '{item}': {count_for_item}/{per_keyword} sentences")
+        logger.info(f"[Level 0.0] {label}: total {total_count} sentences ({per_keyword} per keyword)")
 
     # Execute retrieval per section requirements
-    add_vector_items(stories, total_limit=5, label="Biblical Stories/Characters")
-    add_vector_items(scripture_refs, total_limit=3, label="Scripture References")
-    add_keyword_vector_items(metaphors, total_limit=5, label="Biblical Metaphors")
-    add_keyword_items(keywords, per_keyword=2, label="Biblical Keywords")
+    # Stories/Characters: 5 sentences via vector search
+    add_vector_items(stories, total_limit=5, label="Biblical Stories/Characters", section="stories_characters")
+    # Scripture References: 3 sentences via vector search
+    add_vector_items(scripture_refs, total_limit=3, label="Scripture References", section="scripture_references")
+    # Biblical Metaphors: 5 sentences via keyword+vector search
+    add_keyword_vector_items(metaphors, total_limit=5, label="Biblical Metaphors", section="biblical_metaphors")
+    # Keywords: 2 sentences per keyword via keyword search
+    add_keyword_items(keywords, per_keyword=2, label="Biblical Keywords", section="keywords")
 
-    logger.info(f"[BiblicalParallels] Total collected before dedup: {len(collected)}")
+    logger.info(f"[Level 0.0] Total collected before dedup: {len(collected)}")
 
     # Final dedup across everything
     deduped, used = deduplicate_sentences(collected, existing_texts=used, similarity_threshold=0.95)
     
-    logger.info(f"[BiblicalParallels] Total after dedup: {len(deduped)}")
-    for i, sent in enumerate(deduped[:10]):
-        logger.info(f"[BiblicalParallels] #{i+1} [{sent.get('source_type')}] {sent.get('text', '')[:80]}...")
+    logger.info(f"[Level 0.0] Total after dedup: {len(deduped)}")
+    
+    # Print summary by section for QA
+    sections_count = {}
+    for sent in deduped:
+        section = sent.get("parallels_section", "unknown")
+        sections_count[section] = sections_count.get(section, 0) + 1
+    logger.info(f"[Level 0.0] Summary by section: {sections_count}")
+    
+    for i, sent in enumerate(deduped):
+        logger.info(f"[Level 0.0] #{i+1} [{sent.get('source_type')}] {sent.get('text', '')[:80]}...")
     
     return deduped, used
