@@ -12,6 +12,7 @@ from typing import List, Dict, Any, Set, Optional, Generator
 from vector.elastic_client import es
 from config import settings
 from services.embedder import get_embedding, get_embeddings_batch
+from services.deduplicator import is_duplicate, deduplicate_sentences
 
 INDEX = settings.ES_INDEX_NAME
 
@@ -337,14 +338,18 @@ def get_sentences_by_level(
         exclude_texts=exclude_texts
     )
     
-    # Deduplicate
+    # Deduplicate with advanced similarity checking
     seen = set()
     unique = []
     for h in hits:
         t = h["text"]
-        if t not in seen and (exclude_texts is None or t not in exclude_texts):
-            seen.add(t)
-            unique.append(h)
+        # Check with similarity-based deduplication (90% threshold)
+        if is_duplicate(t, seen, similarity_threshold=0.90):
+            continue
+        if exclude_texts and is_duplicate(t, exclude_texts, similarity_threshold=0.90):
+            continue
+        seen.add(t)
+        unique.append(h)
         if len(unique) >= buffered_limit:  # Dùng buffered_limit
             break
     

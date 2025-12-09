@@ -707,10 +707,15 @@ async def ask(req: AskRequest):
         keywords=clean_keywords
     )
     
-    # Update session with state from retriever
+    # IMPORTANT: Update session.used_sentences first from state_dict
+    # This ensures all sentences from get_next_batch are tracked
+    all_used_texts = set(updated_state.get("used_sentence_ids", []))
+    all_used_texts.update([s["text"] for s in source_sentences])
+    
+    # Update session with complete state from retriever
     session_manager.update_session(
         session.session_id,
-        used_sentences=[s["text"] for s in source_sentences],
+        used_sentences=list(all_used_texts),  # Pass ALL used texts
         question_variants=question_variants,
         keywords=keyword_meaning,
         state_dict=updated_state
@@ -899,10 +904,15 @@ async def continue_conversation(req: ContinueRequest):
     # Call LLM
     answer = call_llm(prompt)
     
+    # IMPORTANT: Sync all used sentences from state_dict
+    # This ensures no duplicates in future /continue calls
+    all_used_texts = set(updated_state.get("used_sentence_ids", []))
+    all_used_texts.update([s["text"] for s in source_sentences])
+    
     # Update session with new state
     session_manager.update_session(
         session.session_id,
-        used_sentences=[s["text"] for s in source_sentences],
+        used_sentences=list(all_used_texts),  # Pass ALL used texts from state
         question_variants=question_variants,
         keywords=keyword_meaning,
         increment_level=True,

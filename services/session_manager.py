@@ -116,8 +116,14 @@ class SessionManager:
         if not session:
             return
         
+        # Update from state dict FIRST (contains complete used_sentence_ids)
+        if state_dict:
+            session.update_from_state(state_dict)
+        
+        # Then add any new sentences from current response
         if used_sentences:
             session.used_sentences.update(used_sentences)
+            session.used_sentence_ids = list(session.used_sentences)
         
         if question_variants:
             session.used_variants.append(question_variants)
@@ -127,10 +133,6 @@ class SessionManager:
         
         if increment_level:
             session.continue_count += 1
-        
-        # Update from multi-level retriever state
-        if state_dict:
-            session.update_from_state(state_dict)
     
     def can_continue(self, session_id: str) -> bool:
         """Check if can continue exploring deeper"""

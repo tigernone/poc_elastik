@@ -26,6 +26,12 @@ from services.keyword_extractor import (
     generate_keyword_magical_pairs,
     get_magical_words_for_level3,
 )
+from services.deduplicator import (
+    is_duplicate,
+    normalize_text,
+    get_text_fingerprint,
+    deduplicate_sentences
+)
 
 logger = logging.getLogger(__name__)
 INDEX = settings.ES_INDEX_NAME
@@ -108,9 +114,10 @@ def get_pure_semantic_search(
             if not is_valid_sentence(text):
                 continue
             
-            if text in seen_texts:
+            # Advanced duplicate detection (handles near-duplicates)
+            if is_duplicate(text, seen_texts, similarity_threshold=0.90):
                 continue
-            if exclude_texts and text in exclude_texts:
+            if exclude_texts and is_duplicate(text, exclude_texts, similarity_threshold=0.90):
                 continue
                 
             seen_texts.add(text)
@@ -182,9 +189,10 @@ class MultiLevelRetriever:
                 # Skip short/invalid sentences
                 if not is_valid_sentence(text):
                     continue
-                if text in seen_texts:
+                # Advanced duplicate detection
+                if is_duplicate(text, seen_texts, similarity_threshold=0.90):
                     continue
-                if exclude_texts and text in exclude_texts:
+                if exclude_texts and is_duplicate(text, exclude_texts, similarity_threshold=0.90):
                     continue
                 seen_texts.add(text)
                 results.append(
@@ -262,9 +270,10 @@ class MultiLevelRetriever:
                 # Skip short/invalid sentences
                 if not is_valid_sentence(text):
                     continue
-                if text in seen_texts:
+                # Advanced duplicate detection
+                if is_duplicate(text, seen_texts, similarity_threshold=0.90):
                     continue
-                if exclude_texts and text in exclude_texts:
+                if exclude_texts and is_duplicate(text, exclude_texts, similarity_threshold=0.90):
                     continue
                 if require_all_words:
                     query_words = query_text.lower().split()
