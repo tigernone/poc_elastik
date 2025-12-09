@@ -68,7 +68,7 @@ def is_duplicate(
     # OPTIMIZATION: Only check similarity for texts of similar length
     # This avoids slow SequenceMatcher comparisons for obviously different texts
     text_len = len(text)
-    max_similar_checks = 50  # Limit checks to avoid timeout
+    max_similar_checks = 100  # Increased from 50 to ensure we catch near-duplicates
     
     check_count = 0
     for seen_text in seen_texts:
