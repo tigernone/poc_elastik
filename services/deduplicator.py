@@ -47,6 +47,7 @@ def is_duplicate(
     
     - First checks for exact match (fastest)
     - Then checks for high similarity (>95%) to catch variants
+    - Only checks close-length texts to avoid slow comparisons
     
     Args:
         text: Text to check
@@ -64,16 +65,25 @@ def is_duplicate(
     if text in seen_texts:
         return True
     
-    # Check for high similarity (>95%) to catch near-duplicates
-    # Only check if texts are similar in length (within 10%)
+    # OPTIMIZATION: Only check similarity for texts of similar length
+    # This avoids slow SequenceMatcher comparisons for obviously different texts
     text_len = len(text)
+    max_similar_checks = 50  # Limit checks to avoid timeout
+    
+    check_count = 0
     for seen_text in seen_texts:
+        if check_count >= max_similar_checks:
+            break
+            
         seen_len = len(seen_text)
-        # Skip if length difference > 10%
-        if abs(text_len - seen_len) / max(text_len, seen_len) > 0.10:
+        
+        # Skip if length difference > 15% (slightly relaxed from 10%)
+        if abs(text_len - seen_len) / max(text_len, seen_len) > 0.15:
             continue
         
-        # Check similarity
+        check_count += 1
+        
+        # Check similarity only for close-length texts
         similarity = calculate_similarity(text, seen_text)
         if similarity >= similarity_threshold:
             return True
