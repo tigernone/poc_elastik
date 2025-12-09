@@ -1,6 +1,6 @@
 # services/prompt_builder.py
 """Prompt Builder - Creates structured prompts for LLM"""
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from config import settings
 from openai import OpenAI
 
@@ -35,7 +35,17 @@ Be thorough and spiritually insightful."""
     except Exception as e:
         return f"Error generating meaning: {str(e)}"
 
-def build_final_prompt(user_query: str, question_variants: str, keyword_meaning: str, source_sentences: List[Dict[str, Any]], continue_mode: bool = False, continue_count: int = 0, custom_prompt: str = None) -> str:
+def build_final_prompt(
+    user_query: str,
+    question_variants: str,
+    keyword_meaning: str,
+    source_sentences: List[Dict[str, Any]],
+    continue_mode: bool = False,
+    continue_count: int = 0,
+    custom_prompt: str = None,
+    biblical_parallels: Optional[Dict[str, Any]] = None,
+    biblical_sources: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     vector_sources = [s for s in source_sentences if s.get("is_primary_source", False)]
     keyword_sources = [s for s in source_sentences if not s.get("is_primary_source", False)]
     
@@ -50,6 +60,28 @@ def build_final_prompt(user_query: str, question_variants: str, keyword_meaning:
         keyword_section = "\n## SECONDARY SOURCES (Keyword Match):\n"
         for i, sent in enumerate(keyword_sources, 1):
             keyword_section += f"{i}. {sent['text']}\n"
+
+    parallels_section = ""
+    if biblical_parallels:
+        stories = ", ".join(biblical_parallels.get("stories_characters", [])[:5])
+        refs = ", ".join(biblical_parallels.get("scripture_references", [])[:5])
+        metaphors = ", ".join(biblical_parallels.get("biblical_metaphors", [])[:5])
+        keywords = ", ".join(biblical_parallels.get("keywords", [])[:5])
+        parallels_section = "\n## BIBLICAL PARALLELS (Pre-Level 0):\n"
+        if stories:
+            parallels_section += f"- Bible Stories/Characters: {stories}\n"
+        if refs:
+            parallels_section += f"- Scripture References: {refs}\n"
+        if metaphors:
+            parallels_section += f"- Biblical Metaphors: {metaphors}\n"
+        if keywords:
+            parallels_section += f"- Keywords: {keywords}\n"
+
+    parallels_sources_section = ""
+    if biblical_sources:
+        parallels_sources_section = "\n## PARALLEL SOURCE SENTENCES:\n"
+        for i, sent in enumerate(biblical_sources, 1):
+            parallels_sources_section += f"{i}. {sent['text']}\n"
     
     # Use custom_prompt if provided, otherwise use default
     if custom_prompt:
@@ -58,19 +90,20 @@ def build_final_prompt(user_query: str, question_variants: str, keyword_meaning:
 QUESTION: {user_query}
 
 MEANING: {keyword_meaning}
-
+{parallels_section}{parallels_sources_section}
 {vector_section}{keyword_section}"""
     else:
         prompt = f"""Answer based on sources below.
 
 QUESTION: {user_query}
-
+{parallels_section}{parallels_sources_section}
 {vector_section}{keyword_section}
 
 INSTRUCTIONS:
 1. Prioritize PRIMARY sources (vector search)
 2. Use SECONDARY sources as supporting evidence
 3. Be accurate and concise
+4. Leverage the BIBLICAL PARALLELS section first when drafting the response
 
 ANSWER:"""
     

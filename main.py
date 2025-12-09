@@ -63,6 +63,11 @@ from services.keyword_extractor import (
     generate_synonyms,
 )
 from services.multi_level_retriever import get_next_batch, MultiLevelRetriever
+from services.biblical_parallels import (
+    analyze_biblical_parallels,
+    gather_biblical_parallels_sentences,
+)
+from services.deduplicator import deduplicate_sentences
 from models.request_models import (
     AskRequest, 
     AskResponse, 
@@ -592,6 +597,20 @@ async def ask(req: AskRequest):
         # Fallback: use simple word extraction
         clean_keywords = [w for w in req.query.lower().split() if len(w) > 3][:5]
         print(f"[DEBUG] Fallback keywords: {clean_keywords}")
+
+    # Pre-Level 0: Biblical parallels analysis + supporting pulls
+    biblical_parallels = analyze_biblical_parallels(req.query)
+    biblical_parallels_sentences, biblical_used_texts = gather_biblical_parallels_sentences(
+        biblical_parallels,
+        existing_texts=set(),
+        base_query=req.query,
+    )
+    logger.info(
+        f"[API /ask] Biblical parallels extracted: stories={len(biblical_parallels.get('stories_characters', []))}, "
+        f"refs={len(biblical_parallels.get('scripture_references', []))}, "
+        f"metaphors={len(biblical_parallels.get('biblical_metaphors', []))}, "
+        f"keywords={len(biblical_parallels.get('keywords', []))}; sentences={len(biblical_parallels_sentences)}"
+    )
     
     # Prepare Level 2/3 synonym debug info for display
     level2_synonyms = []
@@ -640,14 +659,14 @@ async def ask(req: AskRequest):
         initial_state = {
             "current_level": 1,  # Changed from 3 to 1
             "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
-            "used_sentence_ids": []
+            "used_sentence_ids": list(biblical_used_texts),
         }
         print(f"[INFO] Only 1 meaningful word found → Starting from Level 1 (keyword + magic words)")
     else:
         initial_state = {
             "current_level": 0,
             "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
-            "used_sentence_ids": []
+            "used_sentence_ids": list(biblical_used_texts),
         }
     
     source_sentences, updated_state, level_used = get_next_batch(
@@ -667,6 +686,14 @@ async def ask(req: AskRequest):
             limit=req.limit,
             buffer_percentage=req.buffer_percentage
         )
+
+    # Merge pre-level (Biblical parallels) sentences with retrieved results
+    source_sentences = biblical_parallels_sentences + source_sentences
+    source_sentences, _ = deduplicate_sentences(
+        source_sentences,
+        existing_texts=set(),
+        similarity_threshold=0.95,
+    )
     
     logger.info(f"[API /ask] Retrieved {len(source_sentences)} source sentences")
     
@@ -694,7 +721,9 @@ async def ask(req: AskRequest):
         keyword_meaning=keyword_meaning,
         source_sentences=source_sentences,
         continue_mode=False,
-        custom_prompt=req.custom_prompt
+        custom_prompt=req.custom_prompt,
+        biblical_parallels=biblical_parallels,
+        biblical_sources=biblical_parallels_sentences,
     )
 
     # Step 5: Call LLM
