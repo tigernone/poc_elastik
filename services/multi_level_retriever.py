@@ -731,7 +731,8 @@ def get_next_batch(
 
     # CRITICAL: Apply fuzzy deduplication to final results (95% similarity)
     # This catches near-duplicates like "waked" vs "wakened"
-    seen_in_final = set()
+    # IMPORTANT: Use used_texts (from session) to avoid re-returning previously seen items
+    seen_in_final = set(used_texts) if used_texts else set()
     deduplicated_final = []
     removed_count = 0
     
