@@ -186,8 +186,11 @@ jobs:
               echo "⚠️  Streamlit not responding yet (may still be starting)"
             fi
             
-            # Check Watchdog (non-blocking)
-            if ps aux | grep -v grep | grep "watchdog.sh" > /dev/null; then
+            # Check Watchdog (safe with set -e)
+            # Count matching processes instead of relying on grep's exit code.
+            WATCHDOG_COUNT=$(ps aux | grep -v grep | grep "watchdog.sh" | wc -l)
+
+            if [ "$WATCHDOG_COUNT" -gt 0 ]; then
               echo "✅ Watchdog is monitoring (auto-restart enabled)"
             else
               echo "⚠️  Watchdog not detected yet (may still be starting)"
