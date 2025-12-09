@@ -450,8 +450,12 @@ class MultiLevelRetriever:
         # CRITICAL: Batch deduplicate at end (faster than checking each item)
         # Log before and after for debugging
         logger.info(f"[Level 1] Before batch dedup: {len(sentences)} sentences, used_texts has {len(used_texts)} items")
+        for sent in sentences[:2]:
+            logger.info(f"[Level 1] Sentence before dedup: '{sent.get('text', '')[:80]}...'")
         sentences, used_texts = deduplicate_sentences(sentences, existing_texts=used_texts, similarity_threshold=0.95)
         logger.info(f"[Level 1] After batch dedup: {len(sentences)} sentences")
+        for sent in sentences[:2]:
+            logger.info(f"[Level 1] Sentence after dedup: '{sent.get('text', '')[:80]}...'")
         
         return sentences, current_offset, exhausted, current_magic_word, used_texts
 
