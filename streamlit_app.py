@@ -207,6 +207,47 @@ if "can_continue" not in st.session_state:
     st.session_state.can_continue = False
 if "selected_levels" not in st.session_state:
     st.session_state.selected_levels = None
+if "continue_count" not in st.session_state:
+    st.session_state.continue_count = 0
+
+
+def generate_document_content(history: list, include_prompt: bool = True) -> str:
+    """Generate document content from conversation history."""
+    content = []
+    content.append("=" * 60)
+    content.append("AI CHAT - CONVERSATION DOCUMENT")
+    content.append("=" * 60)
+    content.append("")
+    
+    answer_num = 0
+    last_prompt = ""
+    
+    for entry in history:
+        result = entry.get("result", {})
+        
+        if entry["type"] == "ask":
+            answer_num += 1
+            content.append(f"QUESTION: {entry.get('question', 'N/A')}")
+            content.append("-" * 40)
+            content.append(f"ANSWER {answer_num}:")
+            content.append(result.get("answer", "No answer available"))
+            content.append("")
+            last_prompt = result.get("prompt_used", "")
+        else:  # continue
+            answer_num += 1
+            content.append("-" * 40)
+            content.append(f"ANSWER {answer_num} (Tell me more):")
+            content.append(result.get("answer", "No answer available"))
+            content.append("")
+            last_prompt = result.get("prompt_used", "")
+    
+    if include_prompt and last_prompt:
+        content.append("=" * 60)
+        content.append("PROMPT USED:")
+        content.append("=" * 60)
+        content.append(last_prompt)
+    
+    return "\n".join(content)
 
 
 # Sidebar
@@ -746,6 +787,56 @@ if st.session_state.conversation_history:
         st.info("💡 Click **Tell me more** to explore deeper levels")
     else:
         st.success("✅ All available information has been explored")
+
+# Count continues for download buttons
+continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
+
+# Download Document buttons based on continue count
+if continue_count >= 5:
+    st.markdown("---")
+    st.markdown("### 📥 Download Options")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Generate document for 5 answers
+        # Get first 5 entries (1 ask + up to 4 continues = 5 answers, or more)
+        entries_for_5 = []
+        answer_count = 0
+        for entry in st.session_state.conversation_history:
+            entries_for_5.append(entry)
+            answer_count += 1
+            if answer_count >= 5:
+                break
+        
+        doc_content_5 = generate_document_content(entries_for_5, include_prompt=True)
+        st.download_button(
+            label="📄 Download Document (5 Answers)",
+            data=doc_content_5,
+            file_name="conversation_5_answers.txt",
+            mime="text/plain",
+            key="download_5"
+        )
+    
+    if continue_count >= 10:
+        with col2:
+            # Generate document for 10 answers
+            entries_for_10 = []
+            answer_count = 0
+            for entry in st.session_state.conversation_history:
+                entries_for_10.append(entry)
+                answer_count += 1
+                if answer_count >= 10:
+                    break
+            
+            doc_content_10 = generate_document_content(entries_for_10, include_prompt=True)
+            st.download_button(
+                label="📑 Create Document (10 Answers)",
+                data=doc_content_10,
+                file_name="conversation_10_answers.txt",
+                mime="text/plain",
+                key="download_10"
+            )
 
 
 # Footer
