@@ -115,30 +115,37 @@ jobs:
             echo ""
             echo ">>> [4/5] Deploying with watchdog auto-restart..."
             
-            # Stop old services first
+            # Stop old services first (safely)
             if [ -f "stop_demo.sh" ]; then
               chmod +x stop_demo.sh
-              ./stop_demo.sh 2>/dev/null || true
+              # Run stop in subshell to isolate from deployment process
+              (./stop_demo.sh) 2>/dev/null || true
             else
-              # Manual cleanup
-              pkill -f "watchdog.sh" 2>/dev/null || true
-              pkill -f "uvicorn main:app" 2>/dev/null || true
-              pkill -f "streamlit run" 2>/dev/null || true
-              pkill -f "ngrok http" 2>/dev/null || true
+              # Manual safe cleanup using PID files
+              for pid_file in logs/watchdog.pid logs/fastapi.pid logs/streamlit.pid logs/ngrok.pid; do
+                if [ -f "$pid_file" ]; then
+                  kill -9 $(cat "$pid_file") 2>/dev/null || true
+                  rm -f "$pid_file"
+                fi
+              done
             fi
             
             sleep 2
             echo "✅ Old services stopped"
             
             # Make scripts executable
-            chmod +x start_demo.sh
-            chmod +x watchdog.sh
-            chmod +x deploy.sh
+            chmod +x start_demo.sh watchdog.sh deploy.sh 2>/dev/null || true
             
             # Start services with watchdog
-            ./start_demo.sh
+            # Run in background and detach to survive SSH disconnect
+            nohup ./start_demo.sh > logs/deployment.log 2>&1 &
+            START_PID=$!
             
-            echo "✅ Services started with watchdog auto-restart"
+            # Wait for start_demo.sh to complete initialization
+            echo "Waiting for services to initialize..."
+            sleep 10
+            
+            echo "✅ Services startup initiated with watchdog auto-restart"
             
             # ============================================
             # 5. VERIFY DEPLOYMENT
@@ -146,8 +153,8 @@ jobs:
             echo ""
             echo ">>> [5/5] Verifying deployment..."
             
-            # Wait for services to be ready
-            sleep 5
+            # Wait longer for services to be ready
+            sleep 15
             
             
             # Check FastAPI health

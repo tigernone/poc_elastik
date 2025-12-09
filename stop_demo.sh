@@ -37,17 +37,18 @@ stop_service "ngrok" "logs/ngrok.pid"
 echo ""
 echo "Cleaning up any remaining processes..."
 
-# Kill watchdog first
-pkill -f "watchdog.sh" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up watchdog processes${NC}"
+# Kill processes more safely - use exact pattern matching to avoid killing parent
+# Don't use -f flag with full path to avoid killing deployment script
+ps aux | grep '[w]atchdog.sh' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null && echo -e "${GREEN}✓ Cleaned up watchdog processes${NC}"
 
-# Kill any remaining uvicorn processes
-pkill -f "uvicorn main:app" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up uvicorn processes${NC}"
+# Kill any remaining uvicorn processes on port 8000
+ps aux | grep '[u]vicorn main:app' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null && echo -e "${GREEN}✓ Cleaned up uvicorn processes${NC}"
 
-# Kill any remaining streamlit processes
-pkill -f "streamlit run" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up streamlit processes${NC}"
+# Kill any remaining streamlit processes  
+ps aux | grep '[s]treamlit run' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null && echo -e "${GREEN}✓ Cleaned up streamlit processes${NC}"
 
 # Kill any remaining ngrok processes on port 8501
-pkill -f "ngrok http 8501" 2>/dev/null && echo -e "${GREEN}✓ Cleaned up ngrok processes${NC}"
+ps aux | grep '[n]grok http 8501' | grep -v grep | awk '{print $2}' | xargs -r kill -9 2>/dev/null && echo -e "${GREEN}✓ Cleaned up ngrok processes${NC}"
 
 echo ""
 echo -e "${GREEN}✓ All services stopped${NC}"
