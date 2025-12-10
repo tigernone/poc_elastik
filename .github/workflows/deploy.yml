@@ -12,14 +12,15 @@ jobs:
 
     steps:
       - name: 🚀 Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          timeout: 30m
           command_timeout: 30m
           script: |
-            (
             set -e
             
             echo "=============================================="
@@ -109,153 +110,62 @@ jobs:
             fi
             
             # ============================================
-            # 4. DEPLOY WITH WATCHDOG AUTO-RESTART
+            # 4. RESTART SERVICES
             # ============================================
             echo ""
-            echo ">>> [4/5] Deploying with watchdog auto-restart..."
+            echo ">>> [4/5] Khởi động lại services..."
             
-            # Stop old services first (safely)
-            if [ -f "stop_demo.sh" ]; then
-              chmod +x stop_demo.sh
-              # Run stop in subshell to isolate from deployment process
-              (./stop_demo.sh) 2>/dev/null || true
-            else
-              # Manual safe cleanup using PID files
-              for pid_file in logs/watchdog.pid logs/fastapi.pid logs/streamlit.pid logs/ngrok.pid; do
-                if [ -f "$pid_file" ]; then
-                  kill -9 $(cat "$pid_file") 2>/dev/null || true
-                  rm -f "$pid_file"
-                fi
-              done
+            # Kiểm tra pm2
+            if ! command -v pm2 &> /dev/null; then
+              echo "❌ pm2 not found! Installing..."
+              npm install -g pm2
             fi
+            echo "pm2 location: $(which pm2)"
             
-            # Use pgrep and exclude current PID ($$) to prevent self-kill
-            for pattern in "uvicorn main:app" "streamlit run" "watchdog.sh"; do
-              # Find PIDs matching pattern, exclude current shell PID
-              PIDS=$(pgrep -f "$pattern" | grep -v "^$$\$") || true
-              if [ -n "$PIDS" ]; then
-                 echo "Killing $pattern: $PIDS"
-                 kill -9 $PIDS 2>/dev/null || true
-              fi
-            done
-
-            # Use lsof instead of fuser (safer, won't kill SSH)
-            lsof -ti:8000 | xargs kill -9 2>/dev/null || true
-            lsof -ti:8501 | xargs kill -9 2>/dev/null || true
+            # Xóa tiến trình cũ
+            pm2 delete poc-fastapi 2>/dev/null || true
+            pm2 delete poc-streamlit 2>/dev/null || true
+            pkill -f "uvicorn main:app" 2>/dev/null || true
+            pkill -f "streamlit run streamlit_app.py" 2>/dev/null || true
             
+            # Đợi 2s để tiến trình kết thúc hoàn toàn
+            sleep 2
+            
+            # Khởi động lại
+            VENV_PYTHON="$PROJECT_DIR/venv/bin/python"
+            
+            # 1. FastAPI
+            pm2 start $VENV_PYTHON \
+              --name poc-fastapi \
+              --cwd "$PROJECT_DIR" \
+              -- -m uvicorn main:app --host 0.0.0.0 --port 8000
+            
+            # 2. Streamlit
+            pm2 start $VENV_PYTHON \
+              --name poc-streamlit \
+              --cwd "$PROJECT_DIR" \
+              -- -m streamlit run streamlit_app.py \
+                --server.port 8501 \
+                --server.address 0.0.0.0 \
+                --server.headless true \
+                --browser.gatherUsageStats false
+            
+            # Đợi pm2 khởi động xong
             sleep 3
-            echo "✅ All processes killed"
-            
-            # Clear Python cache to ensure fresh code is loaded
-            echo "Clearing Python cache..."
-            find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-            find . -name "*.pyc" -delete 2>/dev/null || true
-            # Also clear from venv site-packages (just the project modules)
-            find ./services -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-            find ./models -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-            find ./vector -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-            echo "✅ Python cache cleared"
-            
-            # Make scripts executable
-            chmod +x start_demo.sh watchdog.sh deploy.sh 2>/dev/null || true
-            
-            # Start services with watchdog
-            # Run in background and detach to survive SSH disconnect
-            nohup ./start_demo.sh > logs/deployment.log 2>&1 &
-            START_PID=$!
-            
-            # Wait for start_demo.sh to complete initialization
-            echo "Waiting for services to initialize..."
-            sleep 10
-            
-            echo "✅ Services startup initiated with watchdog auto-restart"
+            pm2 list
             
             # ============================================
-            # 5. VERIFY DEPLOYMENT
+            # 5. FINISH
             # ============================================
-            echo ""
-            echo ">>> [5/5] Verifying deployment..."
-            
-            # Wait longer for services to be ready
-            sleep 15
-            
-            
-            # Check FastAPI health with retry
-            FASTAPI_READY=false
-            for i in {1..5}; do
-              if curl -s http://localhost:8000/health > /dev/null 2>&1; then
-                echo "✅ FastAPI is running on port 8000"
-                FASTAPI_READY=true
-                break
-              fi
-              echo "   Attempt $i/5: Waiting for FastAPI..."
-              sleep 3
-            done
-            
-            if [ "$FASTAPI_READY" = false ]; then
-              echo "❌ FastAPI health check failed after 5 attempts!"
-              echo "Last 30 lines of FastAPI log:"
-              tail -30 logs/fastapi.log 2>/dev/null || echo "No FastAPI log found"
-              echo ""
-              echo "Deployment log:"
-              tail -30 logs/deployment.log 2>/dev/null || echo "No deployment log found"
-              exit 1
-            fi
-            
-            # Check Streamlit
-            if curl -s http://localhost:8501 > /dev/null 2>&1; then
-              echo "✅ Streamlit is running on port 8501"
-            else
-              echo "⚠️  Streamlit not responding yet (may still be starting)"
-            fi
-            
-            # Check Watchdog (safe with set -e)
-            # Tắt chế độ tự động thoát khi lỗi
-            set +e 
-            # Chạy lệnh kiểm tra an toàn
-            # Dùng grep -c thay cho | wc -l để gọn hơn và tránh pipe
-            # Bật lại chế độ thoát lỗi (nếu các lệnh sau cần an toàn)
-            set -e
-            WATCHDOG_COUNT=$(ps aux | grep -v grep | grep -c "watchdog.sh")
-
-            if [ "$WATCHDOG_COUNT" -gt 0 ]; then
-              echo "✅ Watchdog is monitoring (auto-restart enabled)"
-            else
-              # Chỉ cảnh báo, KHÔNG exit 1 để tránh fail pipeline
-              echo "⚠️  Watchdog not detected yet (may still be starting)"
-              echo "   Check manually: ps aux | grep watchdog"
-            fi
-            
+            pm2 save
             echo ""
             echo "=============================================="
-            echo "✅ DEPLOYMENT COMPLETED!"
+            echo "✅ DEPLOYMENT SUCCESSFUL!"
             echo "=============================================="
             echo ""
-            echo "🎯 Deployment Status:"
-            echo "   FastAPI:   ✅ Running"
-            echo "   Streamlit: ✅ Running" 
-            echo "   Watchdog:  Check logs/watchdog.log"
+            echo "📍 Services are running:"
+            echo "   - FastAPI: http://YOUR_SERVER_IP:8000/docs"
+            echo "   - Web App: http://YOUR_SERVER_IP:8501"
             echo ""
-            echo "📍 Access URLs:"
-            echo "   - Streamlit: http://YOUR_SERVER_IP:8501"
-            echo "   - FastAPI:   http://YOUR_SERVER_IP:8000/docs"
-            echo "   - Health:    http://YOUR_SERVER_IP:8000/health"
-            echo ""
-            echo "📊 Monitor Logs:"
-            echo "   tail -f $PROJECT_DIR/logs/watchdog.log"
-            echo "   tail -f $PROJECT_DIR/logs/fastapi.log"
-            echo "   tail -f $PROJECT_DIR/logs/streamlit.log"
-            echo ""
-            echo "🔍 Watchdog Features:"
-            echo "   ✓ Monitors every 30 seconds"
-            echo "   ✓ Auto-restarts on crash/hang"
-            echo "   ✓ Auto-restarts on high memory (>80%)"
-            echo "   ✓ Max 5 restarts per hour (prevents loops)"
-            echo ""
-            echo "🛠️  Management Commands:"
-            echo "   cd $PROJECT_DIR"
-            echo "   ./stop_demo.sh     # Stop all services"
-            echo "   ./start_demo.sh    # Start with watchdog"
-            echo "=============================================="
-            ) || true
-            exit 0
+            echo "📊 PM2 Status:"
+            pm2 status
