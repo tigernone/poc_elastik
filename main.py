@@ -846,12 +846,12 @@ async def continue_conversation(req: ContinueRequest):
             detail="Session not found or expired (30 min timeout). Please ask a new question with POST /ask"
         )
     
-    # Check if can continue (level 0-3)
-    if session.current_level > 3:
-        raise HTTPException(
-            status_code=400,
-            detail="No more levels available. All information has been explored. Start a new question with POST /ask"
-        )
+    # Check if can continue (unlimited now, relies on content availability)
+    # The get_next_batch function will return empty references if no more data is found
+    # and we can handle that via the return check below.
+    # if session.current_level > 3:
+    #    pass 
+
     
     # Get session state for retriever
     session_state = session.get_state_dict()
