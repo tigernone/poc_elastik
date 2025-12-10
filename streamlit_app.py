@@ -8,6 +8,10 @@ import streamlit as st
 import requests
 import json
 import os
+import io
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from typing import Optional, List
 
 # Configuration
@@ -248,6 +252,51 @@ def generate_document_content(history: list, include_prompt: bool = True) -> str
         content.append(last_prompt)
     
     return "\n".join(content)
+
+
+def generate_docx(history: list, include_prompt: bool = True):
+    """Generate Word document from conversation history."""
+    doc = Document()
+    
+    # Title
+    title = doc.add_heading('AI CHAT - CONVERSATION DOCUMENT', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    answer_num = 0
+    last_prompt = ""
+    
+    for entry in history:
+        result = entry.get("result", {})
+        
+        if entry["type"] == "ask":
+            answer_num += 1
+            doc.add_heading(f'QUESTION: {entry.get("question", "N/A")}', level=1)
+            
+            doc.add_heading(f'ANSWER {answer_num}:', level=2)
+            doc.add_paragraph(result.get("answer", "No answer available"))
+            
+            doc.add_paragraph("_" * 40)
+            
+            last_prompt = result.get("prompt_used", "")
+        else:  # continue
+            answer_num += 1
+            doc.add_heading(f'ANSWER {answer_num} (Tell me more):', level=2)
+            doc.add_paragraph(result.get("answer", "No answer available"))
+            
+            doc.add_paragraph("_" * 40)
+            
+            last_prompt = result.get("prompt_used", "")
+            
+    if include_prompt and last_prompt:
+        doc.add_page_break()
+        doc.add_heading('PROMPT USED:', level=1)
+        doc.add_paragraph(last_prompt)
+        
+    # Save to memory buffer
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
 
 
 # Sidebar
@@ -893,25 +942,42 @@ if continue_count >= 5:
     col1, col2 = st.columns(2)
     
     # Generate document for current history (all responses)
-    doc_content = generate_document_content(st.session_state.conversation_history, include_prompt=True)
+    doc_content_txt = generate_document_content(st.session_state.conversation_history, include_prompt=True)
+    doc_content_docx = generate_docx(st.session_state.conversation_history, include_prompt=True)
     
     with col1:
         st.download_button(
-            label="📄 Download Document",
-            data=doc_content,
+            label="📄 Text (5+ Answers)",
+            data=doc_content_txt,
             file_name=f"conversation_{continue_count}_responses.txt",
             mime="text/plain",
-            key="download_5_plus"
+            key="download_5_plus_txt"
+        )
+        st.markdown("", unsafe_allow_html=True) # Spacer
+        st.download_button(
+            label="📘 Word (5+ Answers)",
+            data=doc_content_docx,
+            file_name=f"conversation_{continue_count}_responses.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="download_5_plus_docx"
         )
     
     if continue_count >= 10:
         with col2:
             st.download_button(
-                label="📑 Create Document",
-                data=doc_content,
+                label="📑 Text (10+ Answers)",
+                data=doc_content_txt,
                 file_name=f"full_conversation_{continue_count}_responses.txt",
                 mime="text/plain",
-                key="download_10_plus"
+                key="download_10_plus_txt"
+            )
+            st.markdown("", unsafe_allow_html=True) # Spacer
+            st.download_button(
+                label="📘 Word (10+ Answers)",
+                data=doc_content_docx,
+                file_name=f"full_conversation_{continue_count}_responses.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="download_10_plus_docx"
             )
 
 
