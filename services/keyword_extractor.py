@@ -13,7 +13,7 @@ from openai import OpenAI
 from pathlib import Path
 from config import settings
 
-# Initialize OpenAI client for keyword extraction (uses chat model)
+# Initialize OpenAI client for keyword extraction (uses chat model))
 if settings.DEEPSEEK_BASE_URL:
     client = OpenAI(
         api_key=settings.DEEPSEEK_API_KEY,
