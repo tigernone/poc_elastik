@@ -722,7 +722,7 @@ if st.session_state.conversation_history:
                 ])
                 st.markdown(bp_kw_html, unsafe_allow_html=True)
         else:
-            st.info("No biblical parallels extracted (query contains only generic terms like faith, god, prayer)")
+            st.info("No biblical parallels extracted for this query")
         
         # === Level 0.0 Source Sentences ===
         if biblical_sources:

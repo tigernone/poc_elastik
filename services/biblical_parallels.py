@@ -91,11 +91,11 @@ Text to analyze: "{query}"
 Bible Stories / Characters – list all people, groups, or stories referenced or implied.
 Scripture References – explicit or implicit verse locations (Book Chapter:Verse format).
 Biblical Metaphors – symbolic language or imagery that connects to a Biblical narrative.
-Keywords – list the key terms, beginning with any Biblical names first.
+Keywords – list the key terms that can be used to search for related Bible passages.
 
 Rules:
-- Exclude generic theological words such as Jesus, God, Christ, Lord, Holy Spirit, love, faith, grace, salvation, redemption, hope, mercy, blessing, worship, praise, and other common devotional terms.
-- Only extract items that match the text's context 100%.
+- Extract ALL relevant biblical terms, including common ones like faith, prayer, God, Lord, Jesus, etc.
+- Only extract items that match the text's context.
 - Output must be concise and strictly based on the given text.
 - Return ONLY valid JSON with keys: stories_characters, scripture_references, biblical_metaphors, keywords.
 - Each item should be 3-10 words maximum.
@@ -105,7 +105,7 @@ Output JSON format:
   "stories_characters": ["Canaanite woman (woman who asked for crumbs)", "The Master's table scene"],
   "scripture_references": ["Matthew 15:21-28", "Mark 7:24-30"],
   "biblical_metaphors": ["Crumbs from the Master's table", "Children's bread"],
-  "keywords": ["Canaanite woman", "Syrophoenician woman", "Crumbs", "Master's table"]
+  "keywords": ["Canaanite woman", "Syrophoenician woman", "Crumbs", "Master's table", "faith"]
 }}
 """
 
@@ -117,7 +117,7 @@ Output JSON format:
             messages=[
                 {
                     "role": "system",
-                    "content": "You extract specific biblical parallels as strict JSON. Be concise, context-accurate, and exclude generic theology terms like Jesus, God, love, faith, grace.",
+                    "content": "You extract biblical parallels as strict JSON. Include ALL relevant biblical terms found in the text, including common words like faith, prayer, God, Lord, Jesus when they appear in the query.",
                 },
                 {"role": "user", "content": prompt},
             ],
@@ -131,12 +131,18 @@ Output JSON format:
         logger.warning(f"[BiblicalParallels] LLM extraction failed: {exc}")
         parsed = {}
 
+    # NOTE: Removed _filter_generic() - keep all terms LLM extracts
+    # Customer wants Level 0.0 to always have data if LLM finds something
     result: Dict[str, List[str]] = {
-        "stories_characters": _filter_generic(parsed.get("stories_characters", [])),
-        "scripture_references": _filter_generic(parsed.get("scripture_references", [])),
-        "biblical_metaphors": _filter_generic(parsed.get("biblical_metaphors", [])),
-        "keywords": _filter_generic(parsed.get("keywords", [])),
+        "stories_characters": parsed.get("stories_characters", []) or [],
+        "scripture_references": parsed.get("scripture_references", []) or [],
+        "biblical_metaphors": parsed.get("biblical_metaphors", []) or [],
+        "keywords": parsed.get("keywords", []) or [],
     }
+    
+    # Clean up: ensure all items are strings and non-empty
+    for key in result:
+        result[key] = [str(item).strip() for item in result[key] if item and str(item).strip()]
     
     logger.info(f"[BiblicalParallels] Extracted - Stories: {result['stories_characters']}, Refs: {result['scripture_references']}, Metaphors: {result['biblical_metaphors']}, Keywords: {result['keywords']}")
     elapsed = time.time() - start_ts
