@@ -600,6 +600,14 @@ async def ask(req: AskRequest):
 
     # Pre-Level 0: Biblical parallels analysis + supporting pulls
     biblical_parallels = analyze_biblical_parallels(req.query)
+    # Store in initial state for Level 0.0 pagination
+    initial_state = {
+        "current_level": 0,
+        "level_offsets": {"0.0": 0, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
+        "used_sentence_ids": [],
+        "biblical_parallels": biblical_parallels
+    }
+    
     biblical_parallels_sentences, biblical_used_texts = gather_biblical_parallels_sentences(
         biblical_parallels,
         existing_texts=set(),
@@ -658,15 +666,17 @@ async def ask(req: AskRequest):
         # Single keyword query → start at Level 1 for contextual search
         initial_state = {
             "current_level": 1,  # Changed from 3 to 1
-            "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
+            "level_offsets": {"0.0": 0, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
             "used_sentence_ids": [],  # Start fresh - Level 0+ should not be filtered by Level 0.0
+            "biblical_parallels": biblical_parallels
         }
         print(f"[INFO] Only 1 meaningful word found → Starting from Level 1 (keyword + magic words)")
     else:
         initial_state = {
             "current_level": 0,
-            "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
+            "level_offsets": {"0.0": 0, "0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
             "used_sentence_ids": [],  # Start fresh - Level 0+ should not be filtered by Level 0.0
+            "biblical_parallels": biblical_parallels
         }
     
     source_sentences, updated_state, level_used = get_next_batch(
@@ -745,6 +755,9 @@ async def ask(req: AskRequest):
     # This ensures all sentences from get_next_batch are tracked
     all_used_texts = set(updated_state.get("used_sentence_ids", []))
     all_used_texts.update([s["text"] for s in source_sentences])
+    
+    # Add biblical_parallels to updated_state for session storage
+    updated_state["biblical_parallels"] = biblical_parallels
     
     # Update session with complete state from retriever
     session_manager.update_session(

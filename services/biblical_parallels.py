@@ -351,3 +351,87 @@ def gather_biblical_parallels_sentences(
     logger.info(f"[Level 0.0] Done in {elapsed:.2f}s with {len(deduped)} sentences")
     
     return deduped, used
+
+
+def fetch_paginated_parallels(
+    parallels: Dict[str, List[str]],
+    offset: int,
+    limit: int,
+    used_texts: Set[str],
+    logger: logging.Logger = logger,
+) -> Tuple[List[Dict[str, str]], int, bool, Set[str]]:
+    """
+    Fetch parallels using pagination.
+    Linearizes all parallel items into a single list and fetches starting from offset.
+    
+    Returns: (sentences, new_offset, exhausted, updated_used_texts)
+    """
+    # 1. Linearize all items into a deterministic list of (label, section, item_text, search_type)
+    # Order: Stories -> Refs -> Metaphors -> Keywords
+    tasks: List[Tuple[str, str, str, str]] = []
+    
+    for item in parallels.get("stories_characters", []):
+        tasks.append(("Stories", "stories_characters", item, "vector"))
+        
+    for item in parallels.get("scripture_references", []):
+        tasks.append(("Refs", "scripture_references", item, "vector"))
+        
+    for item in parallels.get("biblical_metaphors", []):
+        tasks.append(("Metaphors", "biblical_metaphors", item, "keyword_vector"))
+        
+    for item in parallels.get("keywords", []):
+        tasks.append(("Keywords", "keywords", item, "keyword"))
+        
+    collected: List[Dict[str, str]] = []
+    current_offset = offset
+    
+    # Check if already done
+    if current_offset >= len(tasks):
+        return [], current_offset, True, used_texts
+
+    # Use a fresh retriever instance (keywords technically not needed for vector search but required for init)
+    # We pass empty keywords list as we are doing specific item searches
+    retriever = MultiLevelRetriever([])
+    
+    while len(collected) < limit and current_offset < len(tasks):
+        label, section, item, search_type = tasks[current_offset]
+        
+        # Determine strictness/limit based on type
+        # We give each item a fair chance to return results
+        hits: List[Dict[str, Any]] = []
+        
+        if search_type == "vector":
+             hits = get_pure_semantic_search(item, limit=5, exclude_texts=used_texts)
+        elif search_type == "keyword_vector":
+             hits = retriever._text_search(item, limit=5, exclude_texts=used_texts, use_vector=True, match_type="match", require_all_words=False)
+        elif search_type == "keyword":
+             hits = retriever._text_search(item, limit=5, exclude_texts=used_texts, use_vector=True, match_type="match", require_all_words=True)
+             
+        # Add non-duplicates
+        added_for_item = 0
+        for hit in hits:
+            if not is_duplicate(hit["text"], used_texts, similarity_threshold=0.95):
+                # Tag it
+                hit["parallels_item"] = item
+                hit["source"] = "biblical_parallels"
+                hit["source_type"] = f"Level 0.0 - {label}"
+                hit["level"] = 0
+                hit["level_display"] = "0.0"
+                hit["is_primary_source"] = True
+                hit["parallels_section"] = section
+                
+                collected.append(hit)
+                used_texts.add(hit["text"])
+                added_for_item += 1
+                
+                if len(collected) >= limit:
+                    break
+        
+        # Only advance offset if we are "done" with this item? 
+        # Actually, to be simple, we consume one item per loop iteration.
+        # This implies we only search each parallel term ONCE.
+        current_offset += 1
+        
+    exhausted = current_offset >= len(tasks)
+    
+    return collected, current_offset, exhausted, used_texts

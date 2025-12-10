@@ -811,12 +811,23 @@ if st.session_state.conversation_history:
             st.info("No biblical parallels extracted for this query")
         
         # === Level 0.0 Source Sentences ===
-        if biblical_sources:
-            st.markdown(f"**📚 Level 0.0 Source Sentences ({len(biblical_sources)} total):**")
+        # Consolidate Level 0.0 sentences from both 'biblical_sources' (Ask) and 'source_sentences' (Continue)
+        all_biblical_sents = list(biblical_sources)
+        other_sources = result.get("source_sentences", [])
+        
+        # Add any Level 0.0 sentences found in main source_sentences (from pagination)
+        for s in other_sources:
+            if (s.get("source_type") or "").startswith("Level 0.0"):
+                # Avoid duplicates
+                if s.get("text") not in [bs.get("text") for bs in all_biblical_sents]:
+                    all_biblical_sents.append(s)
+
+        if all_biblical_sents:
+            st.markdown(f"**📚 Level 0.0 Source Sentences ({len(all_biblical_sents)} total):**")
             
             # Group by source_type
             sources_by_type = {}
-            for src in biblical_sources:
+            for src in all_biblical_sents:
                 stype = src.get("source_type", "Unknown")
                 if stype not in sources_by_type:
                     sources_by_type[stype] = []
@@ -824,7 +835,7 @@ if st.session_state.conversation_history:
             
             # Display grouped by type with collapsible sections
             for stype, sentences in sources_by_type.items():
-                with st.expander(f"**{stype}** ({len(sentences)} sentences)", expanded=False):
+                with st.expander(f"**{stype}** ({len(sentences)} sentences)", expanded=True):
                     for i, s in enumerate(sentences, 1):
                         score = s.get("score", 0)
                         text = s.get("text", "")
@@ -953,9 +964,9 @@ if st.session_state.conversation_history:
         else:
             st.info("No source sentences available")
         
-        # === ALWAYS VISIBLE: Full Prompt ===
-        st.markdown("### 🔧 Full Prompt Sent to LLM")
-        st.code(result.get("prompt_used", "N/A"), language="text")
+        # === ALWAYS VISIBLE: Full Prompt (Collapsed by default) ===
+        with st.expander("🔧 Full Prompt Sent to LLM", expanded=False):
+            st.code(result.get("prompt_used", "N/A"), language="text")
         
         st.markdown("---")
     

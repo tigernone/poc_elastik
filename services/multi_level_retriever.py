@@ -30,8 +30,10 @@ from services.deduplicator import (
     is_duplicate,
     normalize_text,
     get_text_fingerprint,
+    get_text_fingerprint,
     deduplicate_sentences
 )
+from services.biblical_parallels import fetch_paginated_parallels
 
 logger = logging.getLogger(__name__)
 INDEX = settings.ES_INDEX_NAME
@@ -642,6 +644,50 @@ def get_next_batch(
         remaining = keyword_batch_size - len(sentences)
 
         if current_level == 0:
+            # LEVEL 0.0 CHECK: Biblical Parallels
+            # Check if we have parallel tasks to process first
+            parallels_data = session_state.get("biblical_parallels")
+            offset_00 = level_offsets.get("0.0", 0)
+            
+            # If 0.0 is not marked as done (-1) and we have data
+            if parallels_data and offset_00 != -1:
+                p_sents, p_new_off, p_exh, used_texts = fetch_paginated_parallels(
+                    parallels=parallels_data,
+                    offset=offset_00,
+                    limit=remaining,  # Try to fill remaining batch
+                    used_texts=used_texts
+                )
+                
+                # Update offset
+                level_offsets["0.0"] = p_new_off
+                if p_exh:
+                    level_offsets["0.0"] = -1  # Mark 0.0 as fully exhausted
+                    
+                # Add found sentences
+                for sent in p_sents:
+                    sent["level"] = 0
+                    # sent["source"] already set by fetch_paginated_parallels
+                sentences.extend(p_sents)
+                remaining = keyword_batch_size - len(sentences)
+                
+                # If we filled the batch, break/return (stay at Level 0 for next time if 0.0 not exhausted)
+                if len(sentences) >= keyword_batch_size:
+                    level_used = 0
+                    break
+                    
+                # If 0.0 NOT exhausted but we didn't fill batch, we loop again to get more 0.0?
+                # fetch_paginated_parallels usually fetches 'limit' items.
+                # If it returned fewer, it likely means it ran out of matches for current items
+                # but might still have items left in queue (p_exh tells us).
+                
+                if not p_exh:
+                    # If 0.0 is valid but just yielded few results this turn, 
+                    # we should probably return what we have OR keep digging?
+                    # User logic: "Getting 0 or less then 5 sources then will move to Level 0"
+                    # My loop naturally moves to Level 0 (Combinations) below if remaining > 0
+                    pass 
+
+            # LEVEL 0.0 DONE -> Proceed to Level 0 (Combinations)
             if is_single_keyword:
                 current_level = 1
                 continue

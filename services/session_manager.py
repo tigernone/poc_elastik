@@ -24,12 +24,16 @@ class ConversationSession:
     # Multi-level tracking
     current_level: int = 0  # Current level (0 → 1 → 2 → 3)
     level_offsets: Dict[str, Any] = field(default_factory=lambda: {
+        "0.0": 0,    # Level 0.0: biblical parallels offset
         "0": 0,      # Level 0: combination index
         "1": 0,      # Level 1: keyword+magic index
         "2": 0,      # Level 2: synonym combinations index
         "3": 0,      # Level 3: synonym+magic index
         "4": 0       # Level 4: semantic vector offset (not paginated, kept for parity)
     })
+    
+    # Store initial analysis for reuse
+    biblical_parallels: Dict[str, List[str]] = field(default_factory=dict)
     
     # Keywords and sentences
     keywords: List[str] = field(default_factory=list)  # Extracted clean keywords
@@ -51,6 +55,7 @@ class ConversationSession:
         return {
             "current_level": self.current_level,
             "level_offsets": self.level_offsets,
+            "biblical_parallels": self.biblical_parallels,
             "used_sentence_ids": list(self.used_sentences)
         }
     
@@ -58,6 +63,7 @@ class ConversationSession:
         """Update session from state dict returned by retriever"""
         self.current_level = state.get("current_level", self.current_level)
         self.level_offsets = state.get("level_offsets", self.level_offsets)
+        self.biblical_parallels = state.get("biblical_parallels", self.biblical_parallels)
         new_used = state.get("used_sentence_ids", [])
         self.used_sentences.update(new_used)
         self.used_sentence_ids = list(self.used_sentences)
