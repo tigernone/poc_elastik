@@ -9,7 +9,9 @@ from openai import OpenAI
 
 from config import settings
 from services.deduplicator import deduplicate_sentences, is_duplicate
-from services.multi_level_retriever import MultiLevelRetriever, get_pure_semantic_search
+from services.deduplicator import deduplicate_sentences, is_duplicate
+# Moved local import to avoid circular dependency
+# from services.multi_level_retriever import MultiLevelRetriever, get_pure_semantic_search
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +192,11 @@ def gather_biblical_parallels_sentences(
     keywords = parallels.get("keywords", [])[:5]  # Reduced from 10
 
     logger.info(f"[Level 0.0] Biblical Parallels - Stories: {stories}, Refs: {scripture_refs}, Metaphors: {metaphors}, Keywords: {keywords}")
+
+    logger.info(f"[Level 0.0] Biblical Parallels - Stories: {stories}, Refs: {scripture_refs}, Metaphors: {metaphors}, Keywords: {keywords}")
+    
+    # Import locally to avoid circular dependency
+    from services.multi_level_retriever import MultiLevelRetriever, get_pure_semantic_search
 
     retriever = MultiLevelRetriever(keywords or ([] if base_query is None else base_query.split()))
 
@@ -388,6 +395,12 @@ def fetch_paginated_parallels(
     # Check if already done
     if current_offset >= len(tasks):
         return [], current_offset, True, used_texts
+
+    if current_offset >= len(tasks):
+        return [], current_offset, True, used_texts
+
+    # Import locally to avoid circular dependency
+    from services.multi_level_retriever import MultiLevelRetriever, get_pure_semantic_search
 
     # Use a fresh retriever instance (keywords technically not needed for vector search but required for init)
     # We pass empty keywords list as we are doing specific item searches
