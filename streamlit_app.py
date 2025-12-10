@@ -538,12 +538,14 @@ with col2:
         # Count how many "continue" entries exist in history
         continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
     next_count = continue_count + 1
-    max_level = 20
     
-    button_label = f"📚 Tell me more ({next_count}/{max_level})" if can_continue_now else "📚 Tell me more"
+    # Allow continuous "Tell me more" regardless of API suggestion, as long as session exists
+    session_active = st.session_state.session_id is not None
+    
+    button_label = f"📚 Tell me more ({next_count})"
     continue_button = st.button(
         button_label, 
-        disabled=not can_continue_now,
+        disabled=not session_active,
         use_container_width=True,
         key="continue_btn"
     )
@@ -880,6 +882,7 @@ if st.session_state.conversation_history:
         st.success("✅ All available information has been explored")
 
 # Count continues for download buttons
+# Count continues for download buttons
 continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
 
 # Download Document buttons based on continue count
@@ -889,44 +892,26 @@ if continue_count >= 5:
     
     col1, col2 = st.columns(2)
     
+    # Generate document for current history (all responses)
+    doc_content = generate_document_content(st.session_state.conversation_history, include_prompt=True)
+    
     with col1:
-        # Generate document for 5 answers
-        # Get first 5 entries (1 ask + up to 4 continues = 5 answers, or more)
-        entries_for_5 = []
-        answer_count = 0
-        for entry in st.session_state.conversation_history:
-            entries_for_5.append(entry)
-            answer_count += 1
-            if answer_count >= 5:
-                break
-        
-        doc_content_5 = generate_document_content(entries_for_5, include_prompt=True)
         st.download_button(
-            label="📄 Download Document (5 Answers)",
-            data=doc_content_5,
-            file_name="conversation_5_answers.txt",
+            label="📄 Download Document",
+            data=doc_content,
+            file_name=f"conversation_{continue_count}_responses.txt",
             mime="text/plain",
-            key="download_5"
+            key="download_5_plus"
         )
     
     if continue_count >= 10:
         with col2:
-            # Generate document for 10 answers
-            entries_for_10 = []
-            answer_count = 0
-            for entry in st.session_state.conversation_history:
-                entries_for_10.append(entry)
-                answer_count += 1
-                if answer_count >= 10:
-                    break
-            
-            doc_content_10 = generate_document_content(entries_for_10, include_prompt=True)
             st.download_button(
-                label="📑 Create Document (10 Answers)",
-                data=doc_content_10,
-                file_name="conversation_10_answers.txt",
+                label="📑 Create Document",
+                data=doc_content,
+                file_name=f"full_conversation_{continue_count}_responses.txt",
                 mime="text/plain",
-                key="download_10"
+                key="download_10_plus"
             )
 
 

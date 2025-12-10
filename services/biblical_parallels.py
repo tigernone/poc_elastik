@@ -166,55 +166,58 @@ def gather_biblical_parallels_sentences(
     parallels: Dict[str, List[str]],
     existing_texts: Optional[Set[str]] = None,
     base_query: Optional[str] = None,
-    max_iterations: int = 5,  # Reduced - most relevant sentences come early
-    min_score_threshold: float = 1.0,  # Stop if avg score drops below this
+    max_iterations: int = 2,  # OPTIMIZED: Reduced from 5 to 2 - most relevant come early
+    min_score_threshold: float = 1.2,  # OPTIMIZED: Higher threshold to stop earlier
+    max_total_sentences: int = 50,  # OPTIMIZED: Cap total sentences to prevent overload
 ) -> Tuple[List[Dict[str, str]], Set[str]]:
     """
     Fetch supporting sentences for the biblical parallels layer before Level 0.
     
-    LOOP LOGIC: Each category keeps searching until:
-    1. No new sentences found (0 results), OR
-    2. Max iterations reached, OR
-    3. Average score drops below threshold (sentences getting irrelevant)
-    
-    - Stories/Characters: vector search → 5 sentences per iteration
-    - Scripture References: vector search → 3 sentences per iteration
-    - Biblical Metaphors: keyword + vector search → 5 sentences per iteration
-    - Keywords: keyword search → 2 sentences per keyword per iteration
+    OPTIMIZED LOOP LOGIC: Each category searches with limits:
+    1. Max 2 iterations per category (reduced from 5)
+    2. Higher score threshold to stop earlier
+    3. Cap total sentences at 50
+    4. Fewer items per category
     """
     collected: List[Dict[str, str]] = []
     used: Set[str] = set(existing_texts) if existing_texts else set()
     start_ts = time.time()
 
-    stories = parallels.get("stories_characters", [])[:5]
-    scripture_refs = parallels.get("scripture_references", [])[:4]
-    metaphors = parallels.get("biblical_metaphors", [])[:5]
-    keywords = parallels.get("keywords", [])[:10]
+    # OPTIMIZED: Limit items per category to reduce API calls
+    stories = parallels.get("stories_characters", [])[:3]  # Reduced from 5
+    scripture_refs = parallels.get("scripture_references", [])[:2]  # Reduced from 4
+    metaphors = parallels.get("biblical_metaphors", [])[:3]  # Reduced from 5
+    keywords = parallels.get("keywords", [])[:5]  # Reduced from 10
 
     logger.info(f"[Level 0.0] Biblical Parallels - Stories: {stories}, Refs: {scripture_refs}, Metaphors: {metaphors}, Keywords: {keywords}")
 
     retriever = MultiLevelRetriever(keywords or ([] if base_query is None else base_query.split()))
 
     def loop_vector_search(items: List[str], per_iteration: int, label: str, section: str) -> int:
-        """
-        LOOP: Vector search until no new sentences or score too low.
-        """
+        """OPTIMIZED: Vector search with early exit."""
+        nonlocal collected, used
+        
+        # Check if we've hit the total cap
+        if len(collected) >= max_total_sentences:
+            logger.info(f"[Level 0.0] {label}: SKIPPED (total cap {max_total_sentences} reached)")
+            return 0
+            
         total_collected = 0
         iteration = 0
         
-        while iteration < max_iterations:
+        while iteration < max_iterations and len(collected) < max_total_sentences:
             iteration += 1
             iteration_count = 0
             iteration_scores = []
             
             for item in items:
-                if iteration_count >= per_iteration:
+                if iteration_count >= per_iteration or len(collected) >= max_total_sentences:
                     break
-                remaining = per_iteration - iteration_count
-                hits = get_pure_semantic_search(item, limit=remaining + 3, exclude_texts=used)
+                remaining = min(per_iteration - iteration_count, max_total_sentences - len(collected))
+                hits = get_pure_semantic_search(item, limit=remaining + 2, exclude_texts=used)
                 
                 for hit in hits:
-                    if iteration_count >= per_iteration:
+                    if iteration_count >= per_iteration or len(collected) >= max_total_sentences:
                         break
                     if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                         continue
@@ -227,38 +230,37 @@ def gather_biblical_parallels_sentences(
                     total_collected += 1
             
             avg_score = sum(iteration_scores) / len(iteration_scores) if iteration_scores else 0
-            logger.info(f"[Level 0.0] {label} iteration {iteration}: found {iteration_count} sentences (avg score: {avg_score:.2f})")
+            logger.info(f"[Level 0.0] {label} iter {iteration}: {iteration_count} sentences (avg: {avg_score:.2f})")
             
-            # STOP CONDITIONS:
-            # 1. No new sentences found
+            # STOP CONDITIONS
             if iteration_count == 0:
-                logger.info(f"[Level 0.0] {label}: EXHAUSTED (0 results) after {iteration} iterations, total {total_collected}")
                 break
-            # 2. Score dropped too low (results getting irrelevant)
             if avg_score < min_score_threshold and iteration > 1:
-                logger.info(f"[Level 0.0] {label}: STOPPED (low score {avg_score:.2f}) after {iteration} iterations, total {total_collected}")
                 break
         
         return total_collected
 
     def loop_keyword_vector_search(items: List[str], per_iteration: int, label: str, section: str) -> int:
-        """
-        LOOP: Keyword + vector search until exhausted.
-        """
+        """OPTIMIZED: Keyword + vector search with early exit."""
+        nonlocal collected, used
+        
+        if len(collected) >= max_total_sentences:
+            return 0
+            
         total_collected = 0
         iteration = 0
         
-        while iteration < max_iterations:
+        while iteration < max_iterations and len(collected) < max_total_sentences:
             iteration += 1
             iteration_count = 0
             
             for item in items:
-                if iteration_count >= per_iteration:
+                if iteration_count >= per_iteration or len(collected) >= max_total_sentences:
                     break
-                remaining = per_iteration - iteration_count
+                remaining = min(per_iteration - iteration_count, max_total_sentences - len(collected))
                 hits = retriever._text_search(
                     query_text=item,
-                    limit=remaining + 3,
+                    limit=remaining + 2,
                     exclude_texts=used,
                     use_vector=True,
                     match_type="match",
@@ -266,7 +268,7 @@ def gather_biblical_parallels_sentences(
                 )
                 
                 for hit in hits:
-                    if iteration_count >= per_iteration:
+                    if iteration_count >= per_iteration or len(collected) >= max_total_sentences:
                         break
                     if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                         continue
@@ -277,30 +279,32 @@ def gather_biblical_parallels_sentences(
                     iteration_count += 1
                     total_collected += 1
             
-            logger.info(f"[Level 0.0] {label} iteration {iteration}: found {iteration_count} sentences")
-            
             if iteration_count == 0:
-                logger.info(f"[Level 0.0] {label}: EXHAUSTED after {iteration} iterations, total {total_collected}")
                 break
         
         return total_collected
 
     def loop_keyword_search(items: List[str], per_keyword: int, label: str, section: str) -> int:
-        """
-        LOOP: Keyword search until exhausted.
-        """
+        """OPTIMIZED: Keyword search with early exit."""
+        nonlocal collected, used
+        
+        if len(collected) >= max_total_sentences:
+            return 0
+            
         total_collected = 0
         iteration = 0
         
-        while iteration < max_iterations:
+        while iteration < max_iterations and len(collected) < max_total_sentences:
             iteration += 1
             iteration_count = 0
             
             for item in items:
+                if len(collected) >= max_total_sentences:
+                    break
                 count_for_item = 0
                 hits = retriever._text_search(
                     query_text=item,
-                    limit=per_keyword * 3,
+                    limit=per_keyword * 2,
                     exclude_texts=used,
                     use_vector=True,
                     match_type="match",
@@ -308,7 +312,7 @@ def gather_biblical_parallels_sentences(
                 )
                 
                 for hit in hits:
-                    if count_for_item >= per_keyword:
+                    if count_for_item >= per_keyword or len(collected) >= max_total_sentences:
                         break
                     if is_duplicate(hit["text"], used, similarity_threshold=0.95):
                         continue
@@ -320,40 +324,26 @@ def gather_biblical_parallels_sentences(
                     iteration_count += 1
                     total_collected += 1
             
-            logger.info(f"[Level 0.0] {label} iteration {iteration}: found {iteration_count} sentences")
-            
             if iteration_count == 0:
-                logger.info(f"[Level 0.0] {label}: EXHAUSTED after {iteration} iterations, total {total_collected}")
                 break
         
         return total_collected
 
-    # Execute LOOP retrieval for each section
-    logger.info(f"[Level 0.0] === Starting LOOP searches (max {max_iterations} iterations, stop if score < {min_score_threshold}) ===")
+    # Execute LOOP retrieval for each section (with early exit)
+    logger.info(f"[Level 0.0] Starting searches (max {max_iterations} iters, cap {max_total_sentences} sentences)")
     
-    stories_count = loop_vector_search(stories, per_iteration=5, label="Biblical Stories/Characters", section="stories_characters")
-    refs_count = loop_vector_search(scripture_refs, per_iteration=3, label="Scripture References", section="scripture_references")
-    metaphors_count = loop_keyword_vector_search(metaphors, per_iteration=5, label="Biblical Metaphors", section="biblical_metaphors")
-    keywords_count = loop_keyword_search(keywords, per_keyword=2, label="Biblical Keywords", section="keywords")
+    stories_count = loop_vector_search(stories, per_iteration=5, label="Stories", section="stories_characters")
+    refs_count = loop_vector_search(scripture_refs, per_iteration=3, label="Refs", section="scripture_references")
+    metaphors_count = loop_keyword_vector_search(metaphors, per_iteration=3, label="Metaphors", section="biblical_metaphors")
+    keywords_count = loop_keyword_search(keywords, per_keyword=2, label="Keywords", section="keywords")
 
-    logger.info(f"[Level 0.0] Total collected before dedup: {len(collected)} (Stories: {stories_count}, Refs: {refs_count}, Metaphors: {metaphors_count}, Keywords: {keywords_count})")
+    logger.info(f"[Level 0.0] Collected: {len(collected)} (S:{stories_count}, R:{refs_count}, M:{metaphors_count}, K:{keywords_count})")
 
-    # Final dedup across collected sentences only (not against used - we already checked during collection)
-    # Use original existing_texts for comparison, not the updated 'used' set
+    # Final dedup
     original_existing = set(existing_texts) if existing_texts else set()
     deduped, final_used = deduplicate_sentences(collected, existing_texts=original_existing, similarity_threshold=0.95)
     
-    logger.info(f"[Level 0.0] Total after dedup: {len(deduped)}")
-    
-    # Print summary by section for QA
-    sections_count = {}
-    for sent in deduped:
-        section = sent.get("parallels_section", "unknown")
-        sections_count[section] = sections_count.get(section, 0) + 1
-    logger.info(f"[Level 0.0] Summary by section: {sections_count}")
-    
     elapsed = time.time() - start_ts
-    logger.info(f"[Level 0.0] gather_biblical_parallels_sentences finished in {elapsed:.2f}s with {len(deduped)} total sentences")
+    logger.info(f"[Level 0.0] Done in {elapsed:.2f}s with {len(deduped)} sentences")
     
-    # Return updated used set (original + all collected)
     return deduped, used
