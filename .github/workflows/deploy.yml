@@ -129,13 +129,26 @@ jobs:
               done
             fi
             
-            sleep 2
+            # FORCE KILL all related processes to ensure clean slate
+            echo "Force killing any remaining processes..."
+            pkill -9 -f "uvicorn main:app" 2>/dev/null || true
+            pkill -9 -f "streamlit run" 2>/dev/null || true
+            pkill -9 -f "watchdog.sh" 2>/dev/null || true
+            # Kill any process on ports 8000 and 8501
+            fuser -k 8000/tcp 2>/dev/null || true
+            fuser -k 8501/tcp 2>/dev/null || true
+            
+            sleep 3
             echo "✅ Old services stopped"
             
             # Clear Python cache to ensure fresh code is loaded
             echo "Clearing Python cache..."
             find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
             find . -name "*.pyc" -delete 2>/dev/null || true
+            # Also clear from venv site-packages (just the project modules)
+            find ./services -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+            find ./models -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+            find ./vector -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
             echo "✅ Python cache cleared"
             
             # Make scripts executable
