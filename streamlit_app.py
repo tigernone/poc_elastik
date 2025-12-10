@@ -584,14 +584,15 @@ if st.session_state.conversation_history:
     continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
 
 session_active = st.session_state.session_id is not None
-download_enabled = continue_count >= 5
+# Enable download whenever there is history (at least 1 answer)
+download_enabled = len(st.session_state.conversation_history) > 0
 
 # Prepare download data only if enabled (to avoid performance hit)
 doc_txt = ""
 doc_docx = b""
 if download_enabled:
-    doc_txt = generate_document_content(st.session_state.conversation_history, include_prompt=True)
-    doc_docx = generate_docx(st.session_state.conversation_history, include_prompt=True)
+    doc_txt = generate_document_content(st.session_state.conversation_history, include_prompt=False)
+    doc_docx = generate_docx(st.session_state.conversation_history, include_prompt=False)
 
 with col1:
     ask_button = st.button("🔍 Ask Question", type="primary", use_container_width=True)
@@ -724,34 +725,36 @@ if st.session_state.conversation_history:
         st.markdown("### 🤖 Answer")
         st.markdown(result.get("answer", "No answer available"))
         
-        # === ALWAYS VISIBLE: Details ===
-        st.markdown("### 📊 Details")
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Current Level", result.get("current_level", 0))
-        with col2:
-            st.metric("Max Level", result.get("max_level", 0))
-        with col3:
-            st.metric("Sentences Retrieved", result.get("sentences_retrieved", 0))
+        # === ALWAYS VISIBLE: Details (Collapsed) ===
+        with st.expander("📊 Session Details", expanded=False):
+            st.markdown("### 📊 Details")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Current Level", result.get("current_level", 0))
+            with col2:
+                st.metric("Max Level", result.get("max_level", 0))
+            with col3:
+                st.metric("Sentences Retrieved", result.get("sentences_retrieved", 0))
+            
+            st.markdown("**Question Variants:**")
+            st.text(result.get("question_variants", "N/A"))
         
-        st.markdown("**Question Variants:**")
-        st.text(result.get("question_variants", "N/A"))
-        
-        # === Keywords Section ===
-        st.markdown("### 🔑 Extracted Keywords")
-        keywords = result.get("keywords", [])
-        if keywords:
-            # Display keywords as tags/badges
-            keywords_html = " ".join([
-                f'<span style="background-color: #e3f2fd; color: #1976d2; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">{kw}</span>'
-                for kw in keywords
-            ])
-            st.markdown(keywords_html, unsafe_allow_html=True)
-        else:
-            st.warning("No keywords extracted")
-        
-        st.markdown("**Keyword Meaning:**")
-        st.text(result.get("keyword_meaning", "N/A"))
+        # === Keywords Section (Collapsed) ===
+        with st.expander("🔑 Extracted Keywords & Meaning", expanded=False):
+            st.markdown("### 🔑 Extracted Keywords")
+            keywords = result.get("keywords", [])
+            if keywords:
+                # Display keywords as tags/badges
+                keywords_html = " ".join([
+                    f'<span style="background-color: #e3f2fd; color: #1976d2; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">{kw}</span>'
+                    for kw in keywords
+                ])
+                st.markdown(keywords_html, unsafe_allow_html=True)
+            else:
+                st.warning("No keywords extracted")
+            
+            st.markdown("**Keyword Meaning:**")
+            st.text(result.get("keyword_meaning", "N/A"))
 
         # === Synonym visibility grouped by level ===
         level2_syns = result.get("level2_synonyms", [])
@@ -759,56 +762,57 @@ if st.session_state.conversation_history:
         level3_pairs = result.get("level3_synonym_magic_pairs", [])
         level3_by_kw = result.get("level3_synonym_magic_by_keyword", [])
 
-        # === Level 0.0: Biblical Parallels ===
-        st.markdown("### 📖 Level 0.0 (Biblical Parallels)")
-        biblical_parallels = result.get("biblical_parallels", {})
-        biblical_sources = result.get("biblical_sources", [])
-        
-        # Check if any parallels were actually extracted (not just empty arrays)
-        stories = biblical_parallels.get("stories_characters", []) if biblical_parallels else []
-        refs = biblical_parallels.get("scripture_references", []) if biblical_parallels else []
-        metaphors = biblical_parallels.get("biblical_metaphors", []) if biblical_parallels else []
-        bp_keywords = biblical_parallels.get("keywords", []) if biblical_parallels else []
-        has_parallels = bool(stories or refs or metaphors or bp_keywords)
-        
-        if has_parallels:
-            # Bible Stories / Characters
-            if stories:
-                st.markdown("**📜 Bible Stories / Characters (search terms):**")
-                stories_html = " ".join([
-                    f'<span style="background-color: #fce4ec; color: #c2185b; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">📜 {story}</span>'
-                    for story in stories
-                ])
-                st.markdown(stories_html, unsafe_allow_html=True)
+        # === Level 0.0: Biblical Parallels (Collapsed) ===
+        with st.expander("📖 Biblical Analysis Matches", expanded=False):
+            st.markdown("### 📖 Level 0.0 (Biblical Parallels Search Terms)")
+            biblical_parallels = result.get("biblical_parallels", {})
+            biblical_sources = result.get("biblical_sources", [])
             
-            # Scripture References
-            if refs:
-                st.markdown("**📖 Scripture References (search terms):**")
-                refs_html = " ".join([
-                    f'<span style="background-color: #e8f5e9; color: #2e7d32; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">📖 {ref}</span>'
-                    for ref in refs
-                ])
-                st.markdown(refs_html, unsafe_allow_html=True)
+            # Check if any parallels were actually extracted (not just empty arrays)
+            stories = biblical_parallels.get("stories_characters", []) if biblical_parallels else []
+            refs = biblical_parallels.get("scripture_references", []) if biblical_parallels else []
+            metaphors = biblical_parallels.get("biblical_metaphors", []) if biblical_parallels else []
+            bp_keywords = biblical_parallels.get("keywords", []) if biblical_parallels else []
+            has_parallels = bool(stories or refs or metaphors or bp_keywords)
             
-            # Biblical Metaphors
-            if metaphors:
-                st.markdown("**🔮 Biblical Metaphors (search terms):**")
-                metaphors_html = " ".join([
-                    f'<span style="background-color: #fff3e0; color: #e65100; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">🔮 {m}</span>'
-                    for m in metaphors
-                ])
-                st.markdown(metaphors_html, unsafe_allow_html=True)
-            
-            # Keywords (from biblical analysis)
-            if bp_keywords:
-                st.markdown("**🔑 Biblical Keywords (search terms):**")
-                bp_kw_html = " ".join([
-                    f'<span style="background-color: #e3f2fd; color: #1565c0; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">🔑 {kw}</span>'
-                    for kw in bp_keywords
-                ])
-                st.markdown(bp_kw_html, unsafe_allow_html=True)
-        else:
-            st.info("No biblical parallels extracted for this query")
+            if has_parallels:
+                # Bible Stories / Characters
+                if stories:
+                    st.markdown("**📜 Bible Stories / Characters (search terms):**")
+                    stories_html = " ".join([
+                        f'<span style="background-color: #fce4ec; color: #c2185b; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">📜 {story}</span>'
+                        for story in stories
+                    ])
+                    st.markdown(stories_html, unsafe_allow_html=True)
+                
+                # Scripture References
+                if refs:
+                    st.markdown("**📖 Scripture References (search terms):**")
+                    refs_html = " ".join([
+                        f'<span style="background-color: #e8f5e9; color: #2e7d32; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">📖 {ref}</span>'
+                        for ref in refs
+                    ])
+                    st.markdown(refs_html, unsafe_allow_html=True)
+                
+                # Biblical Metaphors
+                if metaphors:
+                    st.markdown("**🔮 Biblical Metaphors (search terms):**")
+                    metaphors_html = " ".join([
+                        f'<span style="background-color: #fff3e0; color: #e65100; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">🔮 {m}</span>'
+                        for m in metaphors
+                    ])
+                    st.markdown(metaphors_html, unsafe_allow_html=True)
+                
+                # Keywords (from biblical analysis)
+                if bp_keywords:
+                    st.markdown("**🔑 Biblical Keywords (search terms):**")
+                    bp_kw_html = " ".join([
+                        f'<span style="background-color: #e3f2fd; color: #1565c0; padding: 5px 12px; border-radius: 15px; margin: 3px; display: inline-block; font-weight: 500;">🔑 {kw}</span>'
+                        for kw in bp_keywords
+                    ])
+                    st.markdown(bp_kw_html, unsafe_allow_html=True)
+            else:
+                st.info("No biblical parallels extracted for this query")
         
         # === Level 0.0 Source Sentences ===
         # Consolidate Level 0.0 sentences from both 'biblical_sources' (Ask) and 'source_sentences' (Continue)
@@ -926,45 +930,46 @@ if st.session_state.conversation_history:
             else:
                 st.info("No Level 3 synonym+magic pairs available")
         
-        # === ALWAYS VISIBLE: Source Sentences ===
-        st.markdown("### 📄 Source Sentences")
-        sources = result.get("source_sentences", [])
-        # Filter out Level 0.0 sentences (they're shown separately above)
-        sources = [s for s in sources if not (s.get("source_type") or "").startswith("Level 0.0")]
-        if sources:
-            for src in sources:
-                level = src.get("level", 0)
-                score = src.get("score", 0)
-                text = src.get("text", "")
-                is_primary = src.get("is_primary_source", False)
-                source_type = src.get("source_type", "")
-                
-                # Use source_type if available, otherwise fall back to is_primary logic
-                if source_type:
-                    if source_type == "Vector":
+        # === ALWAYS VISIBLE: Source Sentences (Collapsed) ===
+        with st.expander("📄 Source Sentences", expanded=False):
+            st.markdown("### 📄 Source Sentences")
+            sources = result.get("source_sentences", [])
+            # Filter out Level 0.0 sentences (they're shown separately above)
+            sources = [s for s in sources if not (s.get("source_type") or "").startswith("Level 0.0")]
+            if sources:
+                for src in sources:
+                    level = src.get("level", 0)
+                    score = src.get("score", 0)
+                    text = src.get("text", "")
+                    is_primary = src.get("is_primary_source", False)
+                    source_type = src.get("source_type", "")
+                    
+                    # Use source_type if available, otherwise fall back to is_primary logic
+                    if source_type:
+                        if source_type == "Vector":
+                            border_color = "#28a745"  # Green for vector
+                            label = f"🟢 {source_type}"
+                        elif source_type.startswith("Level"):
+                            border_color = "#17a2b8"  # Blue for level
+                            label = f"🔵 {source_type}"
+                        else:
+                            border_color = "#6c757d"  # Gray for unknown
+                            label = f"⚪ {source_type}"
+                    elif is_primary:
                         border_color = "#28a745"  # Green for vector
-                        label = f"🟢 {source_type}"
-                    elif source_type.startswith("Level"):
-                        border_color = "#17a2b8"  # Blue for level
-                        label = f"🔵 {source_type}"
+                        label = "🟢 Vector"
                     else:
-                        border_color = "#6c757d"  # Gray for unknown
-                        label = f"⚪ {source_type}"
-                elif is_primary:
-                    border_color = "#28a745"  # Green for vector
-                    label = "🟢 Vector"
-                else:
-                    border_color = "#17a2b8"  # Blue for level
-                    label = f"🔵 Level {level}"
-                
-                st.markdown(f"""
-                <div class="source-sentence" style="border-left: 4px solid {border_color}; padding-left: 10px; margin-bottom: 10px;">
-                    <strong>{label}</strong> (Score: {score:.2f})<br>
-                    {text}
-                </div>
-                """, unsafe_allow_html=True)
-        else:
-            st.info("No source sentences available")
+                        border_color = "#17a2b8"  # Blue for level
+                        label = f"🔵 Level {level}"
+                    
+                    st.markdown(f"""
+                    <div class="source-sentence" style="border-left: 4px solid {border_color}; padding-left: 10px; margin-bottom: 10px;">
+                        <strong>{label}</strong> (Score: {score:.2f})<br>
+                        {text}
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.info("No source sentences available")
         
         # === ALWAYS VISIBLE: Full Prompt (Collapsed by default) ===
         with st.expander("🔧 Full Prompt Sent to LLM", expanded=False):
