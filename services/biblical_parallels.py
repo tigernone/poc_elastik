@@ -166,7 +166,7 @@ def gather_biblical_parallels_sentences(
     parallels: Dict[str, List[str]],
     existing_texts: Optional[Set[str]] = None,
     base_query: Optional[str] = None,
-    max_iterations: int = 2,  # OPTIMIZED: Reduced from 5 to 2 - most relevant come early
+    max_iterations: int = 1,  # OPTIMIZED: Single pass only (was 2)
     min_score_threshold: float = 1.2,  # OPTIMIZED: Higher threshold to stop earlier
     max_total_sentences: int = 50,  # OPTIMIZED: Cap total sentences to prevent overload
 ) -> Tuple[List[Dict[str, str]], Set[str]]:
@@ -224,7 +224,8 @@ def gather_biblical_parallels_sentences(
                     hit["parallels_item"] = item
                     hit["iteration"] = iteration
                     iteration_scores.append(hit.get("score", 0))
-                    collected.append(_tag_sentence(hit, f"{label} (iter {iteration})", is_primary=True, parallels_section=section))
+                    # Removed "iter {iteration}" from label for cleaner UI
+                    collected.append(_tag_sentence(hit, f"{label}", is_primary=True, parallels_section=section))
                     used.add(hit["text"])
                     iteration_count += 1
                     total_collected += 1
@@ -274,7 +275,8 @@ def gather_biblical_parallels_sentences(
                         continue
                     hit["parallels_item"] = item
                     hit["iteration"] = iteration
-                    collected.append(_tag_sentence(hit, f"{label} (iter {iteration})", is_primary=True, parallels_section=section))
+                    # Removed "iter {iteration}" from label for cleaner UI
+                    collected.append(_tag_sentence(hit, f"{label}", is_primary=True, parallels_section=section))
                     used.add(hit["text"])
                     iteration_count += 1
                     total_collected += 1
@@ -318,7 +320,8 @@ def gather_biblical_parallels_sentences(
                         continue
                     hit["parallels_item"] = item
                     hit["iteration"] = iteration
-                    collected.append(_tag_sentence(hit, f"{label} ({item}) iter {iteration}", is_primary=False, parallels_section=section))
+                    # Removed "iter {iteration}" from label for cleaner UI
+                    collected.append(_tag_sentence(hit, f"{label} ({item})", is_primary=False, parallels_section=section))
                     used.add(hit["text"])
                     count_for_item += 1
                     iteration_count += 1
@@ -332,10 +335,11 @@ def gather_biblical_parallels_sentences(
     # Execute LOOP retrieval for each section (with early exit)
     logger.info(f"[Level 0.0] Starting searches (max {max_iterations} iters, cap {max_total_sentences} sentences)")
     
-    stories_count = loop_vector_search(stories, per_iteration=5, label="Stories", section="stories_characters")
-    refs_count = loop_vector_search(scripture_refs, per_iteration=3, label="Refs", section="scripture_references")
-    metaphors_count = loop_keyword_vector_search(metaphors, per_iteration=3, label="Metaphors", section="biblical_metaphors")
-    keywords_count = loop_keyword_search(keywords, per_keyword=2, label="Keywords", section="keywords")
+    # Increased limits for single-pass search (roughly 2x previous per-iteration values)
+    stories_count = loop_vector_search(stories, per_iteration=10, label="Stories", section="stories_characters")
+    refs_count = loop_vector_search(scripture_refs, per_iteration=6, label="Refs", section="scripture_references")
+    metaphors_count = loop_keyword_vector_search(metaphors, per_iteration=6, label="Metaphors", section="biblical_metaphors")
+    keywords_count = loop_keyword_search(keywords, per_keyword=4, label="Keywords", section="keywords")
 
     logger.info(f"[Level 0.0] Collected: {len(collected)} (S:{stories_count}, R:{refs_count}, M:{metaphors_count}, K:{keywords_count})")
 
