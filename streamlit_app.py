@@ -678,9 +678,15 @@ if st.session_state.conversation_history:
         biblical_parallels = result.get("biblical_parallels", {})
         biblical_sources = result.get("biblical_sources", [])
         
-        if biblical_parallels:
+        # Check if any parallels were actually extracted (not just empty arrays)
+        stories = biblical_parallels.get("stories_characters", []) if biblical_parallels else []
+        refs = biblical_parallels.get("scripture_references", []) if biblical_parallels else []
+        metaphors = biblical_parallels.get("biblical_metaphors", []) if biblical_parallels else []
+        bp_keywords = biblical_parallels.get("keywords", []) if biblical_parallels else []
+        has_parallels = bool(stories or refs or metaphors or bp_keywords)
+        
+        if has_parallels:
             # Bible Stories / Characters
-            stories = biblical_parallels.get("stories_characters", [])
             if stories:
                 st.markdown("**📜 Bible Stories / Characters (search terms):**")
                 stories_html = " ".join([
@@ -690,7 +696,6 @@ if st.session_state.conversation_history:
                 st.markdown(stories_html, unsafe_allow_html=True)
             
             # Scripture References
-            refs = biblical_parallels.get("scripture_references", [])
             if refs:
                 st.markdown("**📖 Scripture References (search terms):**")
                 refs_html = " ".join([
@@ -700,7 +705,6 @@ if st.session_state.conversation_history:
                 st.markdown(refs_html, unsafe_allow_html=True)
             
             # Biblical Metaphors
-            metaphors = biblical_parallels.get("biblical_metaphors", [])
             if metaphors:
                 st.markdown("**🔮 Biblical Metaphors (search terms):**")
                 metaphors_html = " ".join([
@@ -710,7 +714,6 @@ if st.session_state.conversation_history:
                 st.markdown(metaphors_html, unsafe_allow_html=True)
             
             # Keywords (from biblical analysis)
-            bp_keywords = biblical_parallels.get("keywords", [])
             if bp_keywords:
                 st.markdown("**🔑 Biblical Keywords (search terms):**")
                 bp_kw_html = " ".join([
@@ -718,11 +721,8 @@ if st.session_state.conversation_history:
                     for kw in bp_keywords
                 ])
                 st.markdown(bp_kw_html, unsafe_allow_html=True)
-            
-            if not stories and not refs and not metaphors and not bp_keywords:
-                st.info("No biblical parallels extracted")
         else:
-            st.info("No biblical parallels available")
+            st.info("No biblical parallels extracted (query contains only generic terms like faith, god, prayer)")
         
         # === Level 0.0 Source Sentences ===
         if biblical_sources:
@@ -842,11 +842,11 @@ if st.session_state.conversation_history:
                 
                 # Use source_type if available, otherwise fall back to is_primary logic
                 if source_type:
-                    if "Vector" in source_type or "Semantic" in source_type:
-                        border_color = "#28a745"  # Green for vector/semantic
+                    if source_type == "Vector":
+                        border_color = "#28a745"  # Green for vector
                         label = f"🟢 {source_type}"
-                    elif "Keyword" in source_type:
-                        border_color = "#17a2b8"  # Blue for keyword
+                    elif source_type.startswith("Level"):
+                        border_color = "#17a2b8"  # Blue for level
                         label = f"🔵 {source_type}"
                     else:
                         border_color = "#6c757d"  # Gray for unknown

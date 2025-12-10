@@ -659,14 +659,14 @@ async def ask(req: AskRequest):
         initial_state = {
             "current_level": 1,  # Changed from 3 to 1
             "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
-            "used_sentence_ids": list(biblical_used_texts),
+            "used_sentence_ids": [],  # Start fresh - Level 0+ should not be filtered by Level 0.0
         }
         print(f"[INFO] Only 1 meaningful word found → Starting from Level 1 (keyword + magic words)")
     else:
         initial_state = {
             "current_level": 0,
             "level_offsets": {"0": 0, "1": 0, "2": 0, "3": 0, "4": 0},
-            "used_sentence_ids": list(biblical_used_texts),
+            "used_sentence_ids": [],  # Start fresh - Level 0+ should not be filtered by Level 0.0
         }
     
     source_sentences, updated_state, level_used = get_next_batch(
@@ -687,15 +687,20 @@ async def ask(req: AskRequest):
             buffer_percentage=req.buffer_percentage
         )
 
-    # Merge pre-level (Biblical parallels) sentences with retrieved results
-    source_sentences = biblical_parallels_sentences + source_sentences
+    # NOTE: Do NOT merge biblical_parallels_sentences into source_sentences
+    # They are displayed separately in UI:
+    # - Level 0.0 (Biblical Parallels) section shows biblical_sources
+    # - Source Sentences section shows only Level 0+ sentences (source_sentences)
+    
+    # Dedup source_sentences to remove any overlap with Level 0.0
+    # This ensures the same sentence doesn't appear in both sections
     source_sentences, _ = deduplicate_sentences(
         source_sentences,
-        existing_texts=set(),
+        existing_texts=biblical_used_texts,  # Remove sentences already in Level 0.0
         similarity_threshold=0.95,
     )
     
-    logger.info(f"[API /ask] Retrieved {len(source_sentences)} source sentences")
+    logger.info(f"[API /ask] Retrieved {len(source_sentences)} source sentences (Level 0+), {len(biblical_parallels_sentences)} biblical sources (Level 0.0)")
     
     if not source_sentences:
         raise HTTPException(

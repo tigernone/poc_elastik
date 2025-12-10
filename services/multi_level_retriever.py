@@ -719,7 +719,7 @@ def get_next_batch(
         # Mark as semantic with clear labels
         for sent in semantic_results:
             sent["source"] = "vector_search"  # Changed to "vector_search"
-            sent["source_type"] = "Vector/Semantic Search"  # Human-readable label
+            sent["source_type"] = "Vector"  # Human-readable label (short)
             sent["is_primary_source"] = True  # Mark as primary
         
         # Add to used_texts to avoid duplicates in future calls
@@ -732,25 +732,32 @@ def get_next_batch(
 
     # Mark keyword results with clear labels
     for sent in sentences:
-        sent["source_type"] = f"Keyword Match (Level {sent.get('level', 0)})"
+        sent["source_type"] = f"Level {sent.get('level', 0)}"
         sent["is_primary_source"] = False  # Mark as secondary
 
     # IMPORTANT: Put semantic results FIRST (on top), keyword results after
     final_results = semantic_results + sentences
 
-    # CRITICAL: Apply fuzzy deduplication to final results (95% similarity)
-    # This catches near-duplicates like "waked" vs "wakened"
-    deduplicated_final, final_seen_texts = deduplicate_sentences(final_results, existing_texts=used_texts, similarity_threshold=0.95)
+    # CRITICAL: Apply fuzzy deduplication WITHIN final_results only (95% similarity)
+    # This catches near-duplicates between semantic and keyword results
+    # NOTE: Do NOT pass existing_texts=used_texts here - we want to keep all results
+    #       that are different from each other, even if they were used in intermediate steps
+    initial_seen = set()  # Start fresh for final dedup
+    deduplicated_final, final_seen_texts = deduplicate_sentences(final_results, existing_texts=initial_seen, similarity_threshold=0.95)
     removed_count = len(final_results) - len(deduplicated_final)
     
-    logger.warning(f"[get_next_batch] FINAL DEDUP INPUT: {len(final_results)} sentences, used_texts has {len(used_texts)} items")
+    logger.info(f"[get_next_batch] FINAL DEDUP INPUT: {len(final_results)} sentences")
     for i, sent in enumerate(final_results[:3]):
-        logger.warning(f"[get_next_batch]   #{i}: '{sent.get('text', '')[:80]}...'")
+        logger.debug(f"[get_next_batch]   #{i}: '{sent.get('text', '')[:80]}...'")
     
     if removed_count > 0:
-        logger.warning(f"[Dedup] Final results: {len(final_results)} -> {len(deduplicated_final)} (removed {removed_count} near-duplicates)")
+        logger.info(f"[Dedup] Final results: {len(final_results)} -> {len(deduplicated_final)} (removed {removed_count} near-duplicates)")
     else:
         logger.info(f"[Dedup] Final results: {len(final_results)} (no near-duplicates found)")
+    
+    # Update used_texts with all texts from final results (for future calls)
+    for sent in deduplicated_final:
+        used_texts.add(sent.get("text", ""))
     
     updated_state = {
         "current_level": current_level,
