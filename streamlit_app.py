@@ -574,22 +574,32 @@ Never skip or reuse the main title or introduction."""
         help="You can edit this default sermon prompt or replace it with your own"
     )
 
-# Action buttons
-col1, col2, col3 = st.columns([1, 1, 2])
+# Action buttons and Download Options
+# Layout: [Ask] [Tell Me More] [Download Text] [Download Word] [Reset]
+col1, col2, col3, col4, col5 = st.columns([1.2, 1.2, 0.8, 0.8, 0.8])
+
+# Calculate continue count first to determine button state
+continue_count = 0
+if st.session_state.conversation_history:
+    continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
+
+session_active = st.session_state.session_id is not None
+download_enabled = continue_count >= 5
+
+# Prepare download data only if enabled (to avoid performance hit)
+doc_txt = ""
+doc_docx = b""
+if download_enabled:
+    doc_txt = generate_document_content(st.session_state.conversation_history, include_prompt=True)
+    doc_docx = generate_docx(st.session_state.conversation_history, include_prompt=True)
+
 with col1:
     ask_button = st.button("🔍 Ask Question", type="primary", use_container_width=True)
+
 with col2:
     # Debug: show can_continue state
     can_continue_now = st.session_state.get("can_continue", False)
-    # Calculate next continue_count for button label
-    continue_count = 0
-    if st.session_state.conversation_history:
-        # Count how many "continue" entries exist in history
-        continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
     next_count = continue_count + 1
-    
-    # Allow continuous "Tell me more" regardless of API suggestion, as long as session exists
-    session_active = st.session_state.session_id is not None
     
     button_label = f"📚 Tell me more ({next_count})"
     continue_button = st.button(
@@ -598,8 +608,33 @@ with col2:
         use_container_width=True,
         key="continue_btn"
     )
+
 with col3:
-    if st.button("🔄 New Conversation", use_container_width=True):
+    st.download_button(
+        label="📄 Text",
+        data=doc_txt,
+        file_name=f"conversation_{continue_count}_answers.txt",
+        mime="text/plain",
+        disabled=not download_enabled,
+        use_container_width=True,
+        key="dl_txt_top",
+        help="Download conversation history (available after 5 iterations)"
+    )
+
+with col4:
+    st.download_button(
+        label="📘 Word",
+        data=doc_docx,
+        file_name=f"conversation_{continue_count}_answers.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        disabled=not download_enabled,
+        use_container_width=True,
+        key="dl_docx_top",
+        help="Download conversation history (available after 5 iterations)"
+    )
+
+with col5:
+    if st.button("🔄 Reset", use_container_width=True):
         st.session_state.conversation_history = []
         st.session_state.session_id = None
         st.session_state.can_continue = False
@@ -607,7 +642,7 @@ with col3:
 
 # Show current state for debugging
 if st.session_state.session_id:
-    st.caption(f"🔑 Session: {st.session_state.session_id[:20]}... | Can continue: {st.session_state.can_continue}")
+    st.caption(f"🔑 Session: {st.session_state.session_id[:20]}... | Count: {continue_count}")
 
 # Handle Ask button
 if ask_button and user_question:
@@ -929,56 +964,6 @@ if st.session_state.conversation_history:
         st.info("💡 Click **Tell me more** to explore deeper levels")
     else:
         st.success("✅ All available information has been explored")
-
-# Count continues for download buttons
-# Count continues for download buttons
-continue_count = sum(1 for entry in st.session_state.conversation_history if entry.get("type") == "continue")
-
-# Download Document buttons based on continue count
-if continue_count >= 5:
-    st.markdown("---")
-    st.markdown("### 📥 Download Options")
-    
-    col1, col2 = st.columns(2)
-    
-    # Generate document for current history (all responses)
-    doc_content_txt = generate_document_content(st.session_state.conversation_history, include_prompt=True)
-    doc_content_docx = generate_docx(st.session_state.conversation_history, include_prompt=True)
-    
-    with col1:
-        st.download_button(
-            label="📄 Text (5+ Answers)",
-            data=doc_content_txt,
-            file_name=f"conversation_{continue_count}_responses.txt",
-            mime="text/plain",
-            key="download_5_plus_txt"
-        )
-        st.markdown("", unsafe_allow_html=True) # Spacer
-        st.download_button(
-            label="📘 Word (5+ Answers)",
-            data=doc_content_docx,
-            file_name=f"conversation_{continue_count}_responses.docx",
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="download_5_plus_docx"
-        )
-    
-    if continue_count >= 10:
-        with col2:
-            st.download_button(
-                label="📑 Text (10+ Answers)",
-                data=doc_content_txt,
-                file_name=f"full_conversation_{continue_count}_responses.txt",
-                mime="text/plain",
-                key="download_10_plus_txt"
-            )
-            st.markdown("", unsafe_allow_html=True) # Spacer
-            st.download_button(
-                label="📘 Word (10+ Answers)",
-                data=doc_content_docx,
-                file_name=f"full_conversation_{continue_count}_responses.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="download_10_plus_docx"
-            )
 
 
 # Footer
