@@ -905,6 +905,31 @@ async def continue_conversation(req: ContinueRequest):
         semantic_count=0  
     )
     
+    # FALLBACK: If levels 0-3 yielded nothing (or we skipped past them), 
+    # force a check on Level 4 (Vector) to ensure we don't return empty-handed prematurely.
+    if not source_sentences:
+        logger.info("[API /continue] No results from current level walk. Forcing Level 4 (Vector) fallback.")
+        # Temporarily force current_level to 4 in a copy of the state
+        fallback_state = session_state.copy()
+        fallback_state["current_level"] = 4
+        
+        # Call get_next_batch strictly for Level 4
+        # We use enabled_levels=[4] to be sure
+        fallback_sentences, fallback_updated_state, fallback_level_used = get_next_batch(
+            session_state=fallback_state,
+            keywords=keywords,
+            batch_size=req.limit if req.limit else 15,
+            original_query=session.original_query,
+            enabled_levels=[4],
+            semantic_count=0
+        )
+        
+        if fallback_sentences:
+            source_sentences = fallback_sentences
+            updated_state = fallback_updated_state
+            level_used = fallback_level_used
+            logger.info(f"[API /continue] Fallback successful! Found {len(source_sentences)} sentences.")
+    
     # If no more sentences, return response with can_continue=False
     if not source_sentences:
         return ContinueResponse(

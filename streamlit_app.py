@@ -701,7 +701,8 @@ if continue_button and st.session_state.session_id:
         else:
             st.error(f"❌ Error: {result.get('detail', 'Unknown error')}")
             st.session_state.can_continue = False
-            st.rerun()
+            # Do NOT rerun here, let the user see the error
+            # st.rerun()
 
 # Display conversation history
 if st.session_state.conversation_history:
